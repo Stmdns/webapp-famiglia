@@ -9,6 +9,13 @@ import { existsSync } from "fs";
 import { join } from "path";
 import ollama from "ollama";
 
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
+const IS_CLOUD = !!OLLAMA_API_KEY;
+
+console.log("OLLAMA_API_KEY present:", !!OLLAMA_API_KEY);
+console.log("OLLAMA_BASE_URL:", OLLAMA_BASE_URL);
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -81,17 +88,65 @@ export async function POST(
     // Call Ollama for OCR
     let receiptText = "";
     try {
-      const response = await ollama.chat({
-        model: "glm-ocr",
-        messages: [
-          {
-            role: "user",
-            content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
-            images: [base64Image],
-          },
-        ],
-      });
-      receiptText = response.message.content.trim();
+      const model = "qwen2.5vl:3b";
+      
+      if (IS_CLOUD) {
+        // Use Ollama Cloud API
+        console.log("Using Ollama Cloud with model:", model);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        
+        try {
+          const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: model,
+              messages: [
+                {
+                  role: "user",
+                  content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
+                  images: [base64Image],
+                },
+              ],
+            }),
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          console.log("Ollama Cloud response status:", response.status);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Ollama Cloud error:", errorText);
+            throw new Error(`Ollama Cloud API error: ${response.status} - ${errorText}`);
+          }
+          
+          const data = await response.json();
+          receiptText = data.message.content.trim();
+        } catch (fetchError: any) {
+          clearTimeout(timeoutId);
+          console.error("Fetch error:", fetchError.message);
+          throw fetchError;
+        }
+      } else {
+        // Use local Ollama
+        const response = await ollama.chat({
+          model: "glm-ocr",
+          messages: [
+            {
+              role: "user",
+              content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
+              images: [base64Image],
+            },
+          ],
+        });
+        receiptText = response.message.content.trim();
+      }
     } catch (ocrError) {
       console.error("OCR Error:", ocrError);
       receiptText = "";
