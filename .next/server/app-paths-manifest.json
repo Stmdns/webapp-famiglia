@@ -1,3 +1,10 @@
 {
-  "/groups/[id]/expenses/page": "app/groups/[id]/expenses/page.js"
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/groups/[id]/expenses/route": "app/api/groups/[id]/expenses/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/api/groups/[id]/categories/route": "app/api/groups/[id]/categories/route.js",
+  "/api/groups/[id]/one-time-expenses/route": "app/api/groups/[id]/one-time-expenses/route.js",
+  "/groups/[id]/expenses/one-time/page": "app/groups/[id]/expenses/one-time/page.js",
+  "/api/groups/[id]/receipts/route": "app/api/groups/[id]/receipts/route.js",
+  "/groups/[id]/expenses/one-time/[expenseId]/page": "app/groups/[id]/expenses/one-time/[expenseId]/page.js"
 }
