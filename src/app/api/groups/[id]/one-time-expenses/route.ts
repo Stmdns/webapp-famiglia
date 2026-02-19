@@ -20,6 +20,7 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
     const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+    const expenseIdParam = searchParams.get("expenseId");
 
     const [group] = await db
       .select()
@@ -32,10 +33,20 @@ export async function GET(
       return NextResponse.json({ error: "Group not found" }, { status: 404 });
     }
 
-    const expenses = await db
-      .select()
-      .from(oneTimeExpenses)
-      .where(and(eq(oneTimeExpenses.groupId, id), eq(oneTimeExpenses.month, month), eq(oneTimeExpenses.year, year)));
+    let expenses;
+    if (expenseIdParam) {
+      const [expense] = await db
+        .select()
+        .from(oneTimeExpenses)
+        .where(and(eq(oneTimeExpenses.id, expenseIdParam), eq(oneTimeExpenses.groupId, id)))
+        .limit(1);
+      expenses = expense ? [expense] : [];
+    } else {
+      expenses = await db
+        .select()
+        .from(oneTimeExpenses)
+        .where(and(eq(oneTimeExpenses.groupId, id), eq(oneTimeExpenses.month, month), eq(oneTimeExpenses.year, year)));
+    }
 
     const categories = await db
       .select()
@@ -118,7 +129,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    const { expenseId, name, amount, categoryId, date, month, year, isPaid } = body;
+    const { expenseId, name, amount, categoryId, date, month, year, isPaid, receiptText } = body;
 
     const [group] = await db
       .select()
@@ -130,17 +141,23 @@ export async function PUT(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const updateData: any = {
+      name,
+      amount: parseFloat(amount),
+      categoryId: categoryId || null,
+      date: new Date(date),
+      month: parseInt(month),
+      year: parseInt(year),
+      isPaid: isPaid !== undefined ? isPaid : false,
+    };
+
+    if (receiptText !== undefined) {
+      updateData.receiptText = receiptText;
+    }
+
     await db
       .update(oneTimeExpenses)
-      .set({
-        name,
-        amount: parseFloat(amount),
-        categoryId: categoryId || null,
-        date: new Date(date),
-        month: parseInt(month),
-        year: parseInt(year),
-        isPaid: isPaid !== undefined ? isPaid : false,
-      })
+      .set(updateData)
       .where(eq(oneTimeExpenses.id, expenseId));
 
     return NextResponse.json({ success: true });

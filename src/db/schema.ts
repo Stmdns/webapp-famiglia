@@ -66,6 +66,7 @@ export const oneTimeExpenses = sqliteTable("one_time_expenses", {
   month: integer("month").notNull(),
   year: integer("year").notNull(),
   isPaid: integer("is_paid", { mode: "boolean" }).notNull().default(false),
+  receiptText: text("receipt_text"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 

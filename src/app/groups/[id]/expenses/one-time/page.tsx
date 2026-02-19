@@ -12,8 +12,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, Camera, Menu } from "lucide-react";
 import Link from "next/link";
+import { useRef } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Category {
   id: string;
@@ -44,6 +51,7 @@ interface OneTimeExpense {
   isPaid: boolean;
   category?: Category;
   expenseId?: string | null;
+  receiptText?: string | null;
 }
 
 function calculateMonthlyAmount(expense: { amount: number; frequencyType: string; frequencyValue: number }) {
@@ -68,6 +76,8 @@ export default function OneTimeExpensesPage() {
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -277,6 +287,47 @@ export default function OneTimeExpensesPage() {
     }
   };
 
+  const handleReceiptUpload = async (expenseId: string, file: File) => {
+    if (!file) return;
+    
+    setUploadingReceipt(expenseId);
+    toast.info("Elaborazione scontrino con AI in corso...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("expenseId", expenseId);
+
+      const res = await fetch(`/api/groups/${groupId}/receipts`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setExpenses(expenses.map(e => 
+          e.id === expenseId ? { ...e, receiptText: data.receiptText } : e
+        ));
+        toast.success("Scontrino caricato e processato!");
+      } else {
+        const error = await res.json();
+        toast.error(error.error || "Errore nel caricamento");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Errore nel caricamento");
+    } finally {
+      setUploadingReceipt(null);
+    }
+  };
+
+  const openReceiptUpload = (expenseId: string) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.dataset.expenseId = expenseId;
+      fileInputRef.current.click();
+    }
+  };
+
   const resetForm = () => {
     setNewName("");
     setNewAmount("");
@@ -305,32 +356,49 @@ export default function OneTimeExpensesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept="image/jpeg,image/png,image/webp,image/jpg"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const expenseId = e.target.dataset.expenseId;
+          if (file && expenseId) {
+            handleReceiptUpload(expenseId, file);
+            e.target.value = "";
+          }
+        }}
+      />
+      <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Link href={`/groups/${groupId}`}>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="shrink-0">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center">
-                <Receipt className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center shrink-0">
+                <Receipt className="w-4 h-4 text-white" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">Spese Singole</h1>
-                <p className="text-xs text-slate-500">{months[currentMonth - 1]} {currentYear}</p>
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold text-slate-900 truncate">Spese Singole</h1>
+                <p className="text-xs text-slate-500 hidden sm:block">{months[currentMonth - 1]} {currentYear}</p>
               </div>
             </div>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-slate-900 hover:bg-slate-800">
-                <Plus className="w-4 h-4 mr-2" />
-                Aggiungi spesa
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
+          
+          {/* Desktop: Show button directly */}
+          <div className="hidden md:block">
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-slate-900 hover:bg-slate-800">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Aggiungi spesa
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
               <DialogHeader>
                 <DialogTitle>Aggiungi spesa singola</DialogTitle>
               </DialogHeader>
@@ -386,7 +454,25 @@ export default function OneTimeExpensesPage() {
                 <Button type="submit" className="w-full">Aggiungi</Button>
               </form>
             </DialogContent>
-          </Dialog>
+            </Dialog>
+          </div>
+          
+          {/* Mobile: Show menu button */}
+          <div className="md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Aggiungi spesa
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
@@ -539,18 +625,34 @@ export default function OneTimeExpensesPage() {
                             checked={expense.isPaid}
                             onCheckedChange={() => togglePaid(expense.id, expense.isPaid)}
                           />
-                          <div>
-                            <p className="font-medium">{expense.name}</p>
-                            <p className="text-xs text-slate-500">
-                              {new Date(expense.date).toLocaleDateString("it-IT")}
-                            </p>
-                          </div>
+                          <Link href={`/groups/${groupId}/expenses/one-time/${expense.id}`} className="hover:underline">
+                            <div>
+                              <p className="font-medium">{expense.name}</p>
+                              <p className="text-xs text-slate-500">
+                                {new Date(expense.date).toLocaleDateString("it-IT")}
+                              </p>
+                            </div>
+                          </Link>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="text-right">
                             <p className="font-bold">€ {expense.amount.toFixed(2)}</p>
                             <p className="text-xs text-slate-500">{expense.isPaid ? "Pagato" : "Da pagare"}</p>
                           </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            className={`${expense.receiptText ? 'text-green-500 hover:text-green-700' : 'text-slate-400 hover:text-slate-600'} hover:bg-slate-100`}
+                            onClick={() => openReceiptUpload(expense.id)}
+                            disabled={uploadingReceipt === expense.id}
+                            title="Carica scontrino"
+                          >
+                            {uploadingReceipt === expense.id ? (
+                              <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Camera className="w-4 h-4" />
+                            )}
+                          </Button>
                           <Button 
                             variant="ghost" 
                             size="icon"

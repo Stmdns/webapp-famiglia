@@ -11,8 +11,14 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import Link from "next/link";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Category {
   id: string;
@@ -406,69 +412,73 @@ export default function ExpensesPage() {
         </DialogContent>
       </Dialog>
 
-      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Link href={`/groups/${groupId}`}>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="shrink-0">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                <Receipt className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shrink-0">
+                <Receipt className="w-4 h-4 text-white" />
               </div>
-              <div className="flex items-center gap-4">
-                <div>
-                  <h1 className="text-xl font-bold text-slate-900">Spese Ricorrenti</h1>
-                  <p className="text-xs text-slate-500">Gestisci le spese fisse</p>
-                </div>
-                <div className="flex items-center gap-1 ml-4">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8"
-                    onClick={() => {
-                      if (currentMonthState === 1) {
-                        setCurrentMonthState(12);
-                        setCurrentYearState(currentYearState - 1);
-                      } else {
-                        setCurrentMonthState(currentMonthState - 1);
-                      }
-                    }}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="text-sm font-medium min-w-[80px] text-center">
-                    {['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][currentMonthState-1]} {currentYearState}
-                  </span>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8"
-                    onClick={() => {
-                      if (currentMonthState === 12) {
-                        setCurrentMonthState(1);
-                        setCurrentYearState(currentYearState + 1);
-                      } else {
-                        setCurrentMonthState(currentMonthState + 1);
-                      }
-                    }}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                </div>
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold text-slate-900 truncate">Spese Ricorrenti</h1>
+                <p className="text-xs text-slate-500 hidden sm:block">Gestisci le spese fisse</p>
               </div>
             </div>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-slate-900 hover:bg-slate-800">
-                <Plus className="w-4 h-4 mr-2" />
-                Aggiungi spesa
+          
+          <div className="flex items-center gap-1">
+            {/* Month navigation - hidden on small mobile */}
+            <div className="hidden sm:flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={() => {
+                  if (currentMonthState === 1) {
+                    setCurrentMonthState(12);
+                    setCurrentYearState(currentYearState - 1);
+                  } else {
+                    setCurrentMonthState(currentMonthState - 1);
+                  }
+                }}
+              >
+                <ChevronLeft className="w-4 h-4" />
               </Button>
-            </DialogTrigger>
-            <DialogContent>
+              <span className="text-sm font-medium min-w-[60px] text-center">
+                {['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][currentMonthState-1]} {currentYearState}
+              </span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={() => {
+                  if (currentMonthState === 12) {
+                    setCurrentMonthState(1);
+                    setCurrentYearState(currentYearState + 1);
+                  } else {
+                    setCurrentMonthState(currentMonthState + 1);
+                  }
+                }}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {/* Desktop: Show add button */}
+            <div className="hidden md:block">
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-slate-900 hover:bg-slate-800">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Aggiungi spesa
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
               <DialogHeader>
                 <DialogTitle>Aggiungi spesa ricorrente</DialogTitle>
               </DialogHeader>
@@ -608,7 +618,26 @@ export default function ExpensesPage() {
                 <Button type="submit" className="w-full">Aggiungi</Button>
               </form>
             </DialogContent>
-          </Dialog>
+            </Dialog>
+            </div>
+            
+            {/* Mobile: Show menu button */}
+            <div className="md:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <Menu className="w-5 h-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setDialogOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Aggiungi spesa
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         </div>
       </header>
 

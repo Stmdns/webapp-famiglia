@@ -15,6 +15,13 @@
       "when": 1771401462752,
       "tag": "0001_numerous_sharon_ventura",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771401462753,
+      "tag": "0002_add_receipt_text",
+      "breakpoints": true
     }
   ]
 }
