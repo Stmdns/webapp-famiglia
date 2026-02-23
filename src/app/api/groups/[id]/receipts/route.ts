@@ -74,43 +74,70 @@ export async function POST(
       ocrError = "Azure Vision key not configured";
     } else {
       try {
-        console.log("Calling Azure Computer Vision API...");
+        console.log("Calling Azure Computer Vision read/analyze API...");
         
-        // Use the OCR endpoint (synchronous, simpler)
-        const ocrUrl = `${AZURE_VISION_ENDPOINT}/vision/v3.2/ocr`;
-        
-        const response = await fetch(ocrUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
-          },
-          body: JSON.stringify({
-            url: `data:${file.type};base64,${base64Image}`,
-          }),
-        });
+        // Use read/analyze endpoint - accepts base64 in body
+        const response = await fetch(
+          `${AZURE_VISION_ENDPOINT}/vision/v3.2/read/analyze`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
+            },
+            body: JSON.stringify({
+              url: `data:${file.type};base64,${base64Image}`,
+            }),
+          }
+        );
 
-        console.log("Azure OCR response status:", response.status);
+        console.log("Azure read/analyze response status:", response.status);
         
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Azure OCR error:", response.status, errorText);
+          console.error("Azure read/analyze error:", response.status, errorText);
           ocrError = `Azure OCR error: ${response.status} - ${errorText}`;
         } else {
-          const data = await response.json();
-          console.log("Azure OCR response:", JSON.stringify(data).substring(0, 500));
+          const operationLocation = response.headers.get("Operation-Location");
+          console.log("Operation Location:", operationLocation);
           
-          // Extract text from OCR response
-          if (data.regions) {
-            for (const region of data.regions) {
-              for (const line of region.lines) {
-                const lineText = line.words.map((w: any) => w.text).join(" ");
-                receiptText += lineText + "\n";
+          if (operationLocation) {
+            let result = null;
+            let retries = 0;
+            const maxRetries = 20;
+            
+            while (retries < maxRetries) {
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              
+              const resultResponse = await fetch(operationLocation, {
+                headers: {
+                  "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
+                },
+              });
+              
+              const resultData = await resultResponse.json();
+              console.log("Poll result status:", resultData.status);
+              
+              if (resultData.status === "succeeded") {
+                result = resultData;
+                break;
+              } else if (resultData.status === "failed") {
+                ocrError = "Azure OCR failed";
+                break;
               }
+              
+              retries++;
+            }
+            
+            if (result?.analyzeResult?.readResults) {
+              for (const page of result.analyzeResult.readResults) {
+                for (const line of page.lines) {
+                  receiptText += line.text + "\n";
+                }
+              }
+              console.log("Extracted text:", receiptText.substring(0, 200));
             }
           }
-          
-          console.log("Extracted text:", receiptText.substring(0, 200));
         }
       } catch (fetchError: any) {
         console.error("Azure OCR fetch error:", fetchError.message);
