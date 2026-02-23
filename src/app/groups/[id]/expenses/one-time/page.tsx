@@ -305,12 +305,20 @@ export default function OneTimeExpensesPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setExpenses(expenses.map(e => 
-          e.id === expenseId ? { ...e, receiptText: data.receiptText } : e
-        ));
-        toast.success("Scontrino caricato e processato!");
+        console.log("Upload response:", data);
+        
+        if (data.ocrError) {
+          toast.error(`Errore OCR: ${data.ocrError}`);
+          console.error("OCR Error:", data.ocrError);
+        } else {
+          setExpenses(expenses.map(e => 
+            e.id === expenseId ? { ...e, receiptText: data.receiptText } : e
+          ));
+          toast.success("Scontrino caricato e processato!");
+        }
       } else {
         const error = await res.json();
+        console.error("Upload error:", error);
         toast.error(error.error || "Errore nel caricamento");
       }
     } catch (error) {

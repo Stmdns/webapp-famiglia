@@ -155,11 +155,19 @@ export default function ExpenseDetailPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setExpense({ ...expense, receiptText: data.receiptText });
-        setEditedReceiptText(data.receiptText || "");
-        toast.success("Scontrino caricato e processato!");
+        console.log("Upload response:", data);
+        
+        if (data.ocrError) {
+          toast.error(`Errore OCR: ${data.ocrError}`);
+          console.error("OCR Error:", data.ocrError);
+        } else {
+          setExpense({ ...expense, receiptText: data.receiptText });
+          setEditedReceiptText(data.receiptText || "");
+          toast.success("Scontrino caricato e processato!");
+        }
       } else {
         const error = await res.json();
+        console.error("Upload error:", error);
         toast.error(error.error || "Errore nel caricamento");
       }
     } catch (error) {
@@ -212,6 +220,9 @@ export default function ExpenseDetailPage() {
         setExpense({ ...expense, receiptText: null });
         setEditedReceiptText("");
         toast.success("Scontrino eliminato");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Errore nell'eliminazione");
       }
     } catch (error) {
       toast.error("Errore");
