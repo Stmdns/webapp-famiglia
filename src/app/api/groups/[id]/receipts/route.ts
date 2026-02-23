@@ -4,12 +4,10 @@ import { db } from "@/db";
 import { oneTimeExpenses, groups, groupMembers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authOptions } from "@/lib/auth";
-
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
-
-console.log("OLLAMA_API_KEY present:", !!OLLAMA_API_KEY);
-console.log("OLLAMA_BASE_URL:", OLLAMA_BASE_URL);
+import { writeFile, unlink, mkdir } from "fs/promises";
+import { existsSync } from "fs";
+import { join } from "path";
+import ollama from "ollama";
 
 export async function POST(
   req: Request,
@@ -61,63 +59,43 @@ export async function POST(
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Image = buffer.toString("base64");
-    const imageUrl = `data:${file.type};base64,${base64Image}`;
-
-    // OCR with Ollama Cloud
-    let receiptText = "";
-    let ocrError = null;
-
-    if (OLLAMA_API_KEY) {
-      try {
-        console.log("Calling Ollama Cloud API...");
-        console.log("Base URL:", OLLAMA_BASE_URL);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        
-        // Try standard Ollama API endpoint
-        const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${OLLAMA_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "llava:7b",
-            messages: [{
-              role: "user",
-              content: "Extract all text from this receipt.",
-              images: [base64Image],
-            }],
-            stream: false,
-          }),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        console.log("Ollama response status:", response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Ollama error:", response.status, errorText);
-          ocrError = `Ollama error: ${response.status} - ${errorText}`;
-        } else {
-          const data = await response.json();
-          console.log("Ollama response:", JSON.stringify(data).substring(0, 500));
-          receiptText = data.message?.content?.trim() || "";
-        }
-      } catch (fetchError: any) {
-        console.error("Ollama fetch error:", fetchError.message);
-        ocrError = `Ollama failed: ${fetchError.message}`;
-      }
-    } else {
-      ocrError = "Ollama API key not configured";
+    const receiptsDir = join(process.cwd(), "public", "receipts", groupId);
+    if (!existsSync(receiptsDir)) {
+      await mkdir(receiptsDir, { recursive: true });
     }
 
-    // Save regardless of OCR result
+    const timestamp = Date.now();
+    const extension = file.name.split(".").pop() || "jpg";
+    const filename = `${expenseId}_${timestamp}.${extension}`;
+    const filepath = join(receiptsDir, filename);
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    await writeFile(filepath, buffer);
+
+    const imageUrl = `/receipts/${groupId}/${filename}`;
+
+    // Convert image to base64
+    const base64Image = buffer.toString("base64");
+
+    // Call Ollama for OCR
+    let receiptText = "";
+    try {
+      const response = await ollama.chat({
+        model: "glm-ocr",
+        messages: [
+          {
+            role: "user",
+            content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
+            images: [base64Image],
+          },
+        ],
+      });
+      receiptText = response.message.content.trim();
+    } catch (ocrError) {
+      console.error("OCR Error:", ocrError);
+      receiptText = "";
+    }
 
     await db
       .update(oneTimeExpenses)
@@ -128,7 +106,6 @@ export async function POST(
       success: true,
       imageUrl,
       receiptText,
-      ocrError,
     });
   } catch (error) {
     console.error("Error uploading receipt:", error);
@@ -205,12 +182,11 @@ export async function DELETE(
     const [group] = await db
       .select()
       .from(groups)
-      .innerJoin(groupMembers, and(eq(groups.id, groupMembers.groupId), eq(groupMembers.userId, session.user.id)))
       .where(eq(groups.id, groupId))
       .limit(1);
 
-    if (!group) {
-      return NextResponse.json({ error: "Group not found" }, { status: 404 });
+    if (!group || group.ownerId !== session.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const [expense] = await db
@@ -221,6 +197,18 @@ export async function DELETE(
 
     if (!expense) {
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
+    }
+
+    const receiptsDir = join(process.cwd(), "public", "receipts", groupId);
+    
+    if (existsSync(receiptsDir)) {
+      const files = await import("fs/promises").then(fs => fs.readdir(receiptsDir));
+      const matchingFile = files.find(f => f.startsWith(expenseId));
+      
+      if (matchingFile) {
+        const filepath = join(receiptsDir, matchingFile);
+        await unlink(filepath);
+      }
     }
 
     await db
