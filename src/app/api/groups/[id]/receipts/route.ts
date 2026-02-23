@@ -76,66 +76,44 @@ export async function POST(
       try {
         console.log("Calling Azure Computer Vision API...");
         
-        const response = await fetch(
-          `${AZURE_VISION_ENDPOINT}/vision/v3.2/read/analyze`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
-            },
-            body: JSON.stringify({
-              url: `data:${file.type};base64,${base64Image}`,
-            }),
-          }
-        );
+        // Use the OCR endpoint (synchronous, simpler)
+        const ocrUrl = `${AZURE_VISION_ENDPOINT}/vision/v3.2/ocr`;
+        
+        const response = await fetch(ocrUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
+          },
+          body: JSON.stringify({
+            url: `data:${file.type};base64,${base64Image}`,
+          }),
+        });
 
+        console.log("Azure OCR response status:", response.status);
+        
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Azure Vision error:", response.status, errorText);
-          ocrError = `Azure Vision error: ${response.status}`;
+          console.error("Azure OCR error:", response.status, errorText);
+          ocrError = `Azure OCR error: ${response.status} - ${errorText}`;
         } else {
           const data = await response.json();
-          const operationLocation = response.headers.get("Operation-Location");
+          console.log("Azure OCR response:", JSON.stringify(data).substring(0, 500));
           
-          if (operationLocation) {
-            let result = null;
-            let retries = 0;
-            const maxRetries = 10;
-            
-            while (retries < maxRetries) {
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              
-              const resultResponse = await fetch(operationLocation, {
-                headers: {
-                  "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
-                },
-              });
-              
-              const resultData = await resultResponse.json();
-              
-              if (resultData.status === "succeeded") {
-                result = resultData;
-                break;
-              } else if (resultData.status === "failed") {
-                ocrError = "Azure Vision OCR failed";
-                break;
-              }
-              
-              retries++;
-            }
-            
-            if (result?.analyzeResult?.readResults) {
-              for (const page of result.analyzeResult.readResults) {
-                for (const line of page.lines) {
-                  receiptText += line.text + "\n";
-                }
+          // Extract text from OCR response
+          if (data.regions) {
+            for (const region of data.regions) {
+              for (const line of region.lines) {
+                const lineText = line.words.map((w: any) => w.text).join(" ");
+                receiptText += lineText + "\n";
               }
             }
           }
+          
+          console.log("Extracted text:", receiptText.substring(0, 200));
         }
       } catch (fetchError: any) {
-        console.error("Azure Vision fetch error:", fetchError.message);
+        console.error("Azure OCR fetch error:", fetchError.message);
         ocrError = `Fetch error: ${fetchError.message}`;
       }
     }
