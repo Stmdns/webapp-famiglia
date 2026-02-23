@@ -4,12 +4,13 @@ import { db } from "@/db";
 import { oneTimeExpenses, groups, groupMembers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authOptions } from "@/lib/auth";
+import Tesseract from "tesseract.js";
 
-const AZURE_VISION_KEY = process.env.AZURE_VISION_KEY;
-const AZURE_VISION_ENDPOINT = process.env.AZURE_VISION_ENDPOINT || "https://webapp-budget.cognitiveservices.azure.com";
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
 
-console.log("AZURE_VISION_KEY present:", !!AZURE_VISION_KEY);
-console.log("AZURE_VISION_ENDPOINT:", AZURE_VISION_ENDPOINT);
+console.log("OLLAMA_API_KEY present:", !!OLLAMA_API_KEY);
+console.log("OLLAMA_BASE_URL:", OLLAMA_BASE_URL);
 
 export async function POST(
   req: Request,
@@ -66,82 +67,65 @@ export async function POST(
     const base64Image = buffer.toString("base64");
     const imageUrl = `data:${file.type};base64,${base64Image}`;
 
-    // Call Azure Computer Vision for OCR
+    // OCR with Ollama + Tesseract fallback
     let receiptText = "";
     let ocrError = null;
 
-    if (!AZURE_VISION_KEY) {
-      ocrError = "Azure Vision key not configured";
-    } else {
+    if (OLLAMA_API_KEY) {
       try {
-        console.log("Calling Azure Computer Vision read/analyze API...");
+        console.log("Calling Ollama Cloud API...");
         
-        // Use read/analyze endpoint - accepts base64 in body
-        const response = await fetch(
-          `${AZURE_VISION_ENDPOINT}/vision/v3.2/read/analyze`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
-            },
-            body: JSON.stringify({
-              url: `data:${file.type};base64,${base64Image}`,
-            }),
-          }
-        );
-
-        console.log("Azure read/analyze response status:", response.status);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        
+        const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llava:7b",
+            messages: [{
+              role: "user",
+              content: "Extract ALL text from this receipt. List every item, price, and total. Return only the raw text.",
+              images: [base64Image],
+            }],
+            stream: false,
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        console.log("Ollama response status:", response.status);
         
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Azure read/analyze error:", response.status, errorText);
-          ocrError = `Azure OCR error: ${response.status} - ${errorText}`;
+          console.error("Ollama error:", errorText);
+          ocrError = `Ollama error: ${response.status}`;
         } else {
-          const operationLocation = response.headers.get("Operation-Location");
-          console.log("Operation Location:", operationLocation);
-          
-          if (operationLocation) {
-            let result = null;
-            let retries = 0;
-            const maxRetries = 20;
-            
-            while (retries < maxRetries) {
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-              
-              const resultResponse = await fetch(operationLocation, {
-                headers: {
-                  "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
-                },
-              });
-              
-              const resultData = await resultResponse.json();
-              console.log("Poll result status:", resultData.status);
-              
-              if (resultData.status === "succeeded") {
-                result = resultData;
-                break;
-              } else if (resultData.status === "failed") {
-                ocrError = "Azure OCR failed";
-                break;
-              }
-              
-              retries++;
-            }
-            
-            if (result?.analyzeResult?.readResults) {
-              for (const page of result.analyzeResult.readResults) {
-                for (const line of page.lines) {
-                  receiptText += line.text + "\n";
-                }
-              }
-              console.log("Extracted text:", receiptText.substring(0, 200));
-            }
-          }
+          const data = await response.json();
+          receiptText = data.message?.content?.trim() || "";
         }
       } catch (fetchError: any) {
-        console.error("Azure OCR fetch error:", fetchError.message);
-        ocrError = `Fetch error: ${fetchError.message}`;
+        console.error("Ollama fetch error:", fetchError.message);
+        ocrError = `Ollama failed: ${fetchError.message}`;
+      }
+    }
+
+    // Fallback to Tesseract if Ollama failed or not configured
+    if (!receiptText && !ocrError?.includes("timeout")) {
+      try {
+        console.log("Using Tesseract.js fallback...");
+        const result = await Tesseract.recognize(
+          `data:${file.type};base64,${base64Image}`,
+          "ita+eng",
+          { logger: () => {} }
+        );
+        receiptText = result.data.text.trim();
+        console.log("Tesseract result:", receiptText.substring(0, 200));
+      } catch (tesseractError: any) {
+        console.error("Tesseract error:", tesseractError.message);
       }
     }
 
