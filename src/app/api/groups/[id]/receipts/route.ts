@@ -4,9 +4,6 @@ import { db } from "@/db";
 import { oneTimeExpenses, groups, groupMembers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authOptions } from "@/lib/auth";
-import { writeFile, unlink, mkdir } from "fs/promises";
-import { existsSync } from "fs";
-import { join } from "path";
 import ollama from "ollama";
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
@@ -66,29 +63,15 @@ export async function POST(
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
     }
 
-    const receiptsDir = join(process.cwd(), "public", "receipts", groupId);
-    if (!existsSync(receiptsDir)) {
-      await mkdir(receiptsDir, { recursive: true });
-    }
-
-    const timestamp = Date.now();
-    const extension = file.name.split(".").pop() || "jpg";
-    const filename = `${expenseId}_${timestamp}.${extension}`;
-    const filepath = join(receiptsDir, filename);
-
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await writeFile(filepath, buffer);
-
-    const imageUrl = `/receipts/${groupId}/${filename}`;
-
-    // Convert image to base64
     const base64Image = buffer.toString("base64");
+    const imageUrl = `data:${file.type};base64,${base64Image}`;
 
     // Call Ollama for OCR
     let receiptText = "";
     try {
-      const model = "qwen2.5vl:3b";
+      const model = "llava:7b";
       
       if (IS_CLOUD) {
         // Use Ollama Cloud API
@@ -96,6 +79,8 @@ export async function POST(
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 25000);
+        
+        console.log("Sending request to Ollama Cloud...");
         
         try {
           const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
@@ -130,25 +115,30 @@ export async function POST(
           receiptText = data.message.content.trim();
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
-          console.error("Fetch error:", fetchError.message);
-          throw fetchError;
+          console.error("OCR Fetch error (fallback to no text):", fetchError.message);
+          receiptText = "";
         }
       } else {
         // Use local Ollama
-        const response = await ollama.chat({
-          model: "glm-ocr",
-          messages: [
-            {
-              role: "user",
-              content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
-              images: [base64Image],
-            },
-          ],
-        });
-        receiptText = response.message.content.trim();
+        try {
+          const response = await ollama.chat({
+            model: "glm-ocr",
+            messages: [
+              {
+                role: "user",
+                content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
+                images: [base64Image],
+              },
+            ],
+          });
+          receiptText = response.message.content.trim();
+        } catch (localOllamaError) {
+          console.error("Local Ollama error (fallback to no text):", localOllamaError);
+          receiptText = "";
+        }
       }
     } catch (ocrError) {
-      console.error("OCR Error:", ocrError);
+      console.error("OCR Error (fallback to no text):", ocrError);
       receiptText = "";
     }
 
@@ -237,11 +227,12 @@ export async function DELETE(
     const [group] = await db
       .select()
       .from(groups)
+      .innerJoin(groupMembers, and(eq(groups.id, groupMembers.groupId), eq(groupMembers.userId, session.user.id)))
       .where(eq(groups.id, groupId))
       .limit(1);
 
-    if (!group || group.ownerId !== session.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!group) {
+      return NextResponse.json({ error: "Group not found" }, { status: 404 });
     }
 
     const [expense] = await db
@@ -252,18 +243,6 @@ export async function DELETE(
 
     if (!expense) {
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
-    }
-
-    const receiptsDir = join(process.cwd(), "public", "receipts", groupId);
-    
-    if (existsSync(receiptsDir)) {
-      const files = await import("fs/promises").then(fs => fs.readdir(receiptsDir));
-      const matchingFile = files.find(f => f.startsWith(expenseId));
-      
-      if (matchingFile) {
-        const filepath = join(receiptsDir, matchingFile);
-        await unlink(filepath);
-      }
     }
 
     await db
