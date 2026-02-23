@@ -4,7 +4,6 @@ import { db } from "@/db";
 import { oneTimeExpenses, groups, groupMembers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authOptions } from "@/lib/auth";
-import Tesseract from "tesseract.js";
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
@@ -67,7 +66,7 @@ export async function POST(
     const base64Image = buffer.toString("base64");
     const imageUrl = `data:${file.type};base64,${base64Image}`;
 
-    // OCR with Ollama + Tesseract fallback
+    // OCR with Ollama only (Tesseract disabled for serverless)
     let receiptText = "";
     let ocrError = null;
 
@@ -76,7 +75,7 @@ export async function POST(
         console.log("Calling Ollama Cloud API...");
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
         
         const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
           method: "POST",
@@ -88,7 +87,7 @@ export async function POST(
             model: "llava:7b",
             messages: [{
               role: "user",
-              content: "Extract ALL text from this receipt. List every item, price, and total. Return only the raw text.",
+              content: "Extract ALL text from this receipt. Return only the raw text.",
               images: [base64Image],
             }],
             stream: false,
@@ -111,23 +110,11 @@ export async function POST(
         console.error("Ollama fetch error:", fetchError.message);
         ocrError = `Ollama failed: ${fetchError.message}`;
       }
+    } else {
+      ocrError = "Ollama API key not configured";
     }
 
-    // Fallback to Tesseract if Ollama failed or not configured
-    if (!receiptText && !ocrError?.includes("timeout")) {
-      try {
-        console.log("Using Tesseract.js fallback...");
-        const result = await Tesseract.recognize(
-          `data:${file.type};base64,${base64Image}`,
-          "ita+eng",
-          { logger: () => {} }
-        );
-        receiptText = result.data.text.trim();
-        console.log("Tesseract result:", receiptText.substring(0, 200));
-      } catch (tesseractError: any) {
-        console.error("Tesseract error:", tesseractError.message);
-      }
-    }
+    // Save regardless of OCR result
 
     await db
       .update(oneTimeExpenses)
