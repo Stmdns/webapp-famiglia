@@ -4,14 +4,12 @@ import { db } from "@/db";
 import { oneTimeExpenses, groups, groupMembers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authOptions } from "@/lib/auth";
-import ollama from "ollama";
 
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
-const IS_CLOUD = !!OLLAMA_API_KEY;
+const AZURE_VISION_KEY = process.env.AZURE_VISION_KEY;
+const AZURE_VISION_ENDPOINT = process.env.AZURE_VISION_ENDPOINT || "https://webapp-budget.cognitiveservices.azure.com";
 
-console.log("OLLAMA_API_KEY present:", !!OLLAMA_API_KEY);
-console.log("OLLAMA_BASE_URL:", OLLAMA_BASE_URL);
+console.log("AZURE_VISION_KEY present:", !!AZURE_VISION_KEY);
+console.log("AZURE_VISION_ENDPOINT:", AZURE_VISION_ENDPOINT);
 
 export async function POST(
   req: Request,
@@ -68,81 +66,78 @@ export async function POST(
     const base64Image = buffer.toString("base64");
     const imageUrl = `data:${file.type};base64,${base64Image}`;
 
-    // Call Ollama for OCR
+    // Call Azure Computer Vision for OCR
     let receiptText = "";
     let ocrError = null;
-    try {
-      const model = "gemma3"; // More reliable vision model
-      
-      if (IS_CLOUD) {
-        // Use Ollama Cloud API
-        console.log("Using Ollama Cloud with model:", model);
+
+    if (!AZURE_VISION_KEY) {
+      ocrError = "Azure Vision key not configured";
+    } else {
+      try {
+        console.log("Calling Azure Computer Vision API...");
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        
-        console.log("Sending request to Ollama Cloud...");
-        
-        try {
-          const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        const response = await fetch(
+          `${AZURE_VISION_ENDPOINT}/vision/v3.2/read/analyze`,
+          {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+              "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
             },
             body: JSON.stringify({
-              model: model,
-              messages: [
-                {
-                  role: "user",
-                  content: "Extract ALL text from this receipt. List every item, price, and total. Return only the raw text.",
-                  images: [base64Image],
-                },
-              ],
-              stream: false,
+              url: `data:${file.type};base64,${base64Image}`,
             }),
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          console.log("Ollama Cloud response status:", response.status);
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Ollama Cloud error:", response.status, errorText);
-            ocrError = `OCR Error: ${response.status} - ${errorText}`;
-          } else {
-            const data = await response.json();
-            console.log("Ollama response:", data);
-            receiptText = data.message?.content?.trim() || "";
           }
-        } catch (fetchError: any) {
-          clearTimeout(timeoutId);
-          console.error("OCR Fetch error:", fetchError.message);
-          ocrError = `Fetch error: ${fetchError.message}`;
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Azure Vision error:", response.status, errorText);
+          ocrError = `Azure Vision error: ${response.status}`;
+        } else {
+          const data = await response.json();
+          const operationLocation = response.headers.get("Operation-Location");
+          
+          if (operationLocation) {
+            let result = null;
+            let retries = 0;
+            const maxRetries = 10;
+            
+            while (retries < maxRetries) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              
+              const resultResponse = await fetch(operationLocation, {
+                headers: {
+                  "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
+                },
+              });
+              
+              const resultData = await resultResponse.json();
+              
+              if (resultData.status === "succeeded") {
+                result = resultData;
+                break;
+              } else if (resultData.status === "failed") {
+                ocrError = "Azure Vision OCR failed";
+                break;
+              }
+              
+              retries++;
+            }
+            
+            if (result?.analyzeResult?.readResults) {
+              for (const page of result.analyzeResult.readResults) {
+                for (const line of page.lines) {
+                  receiptText += line.text + "\n";
+                }
+              }
+            }
+          }
         }
-      } else {
-        // Use local Ollama
-        try {
-          const response = await ollama.chat({
-            model: "glm-ocr",
-            messages: [
-              {
-                role: "user",
-                content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
-                images: [base64Image],
-              },
-            ],
-          });
-          receiptText = response.message.content.trim();
-        } catch (localOllamaError) {
-          console.error("Local Ollama error (fallback to no text):", localOllamaError);
-          receiptText = "";
-        }
+      } catch (fetchError: any) {
+        console.error("Azure Vision fetch error:", fetchError.message);
+        ocrError = `Fetch error: ${fetchError.message}`;
       }
-    } catch (ocrError) {
-      console.error("OCR Error (fallback to no text):", ocrError);
-      receiptText = "";
     }
 
     await db
