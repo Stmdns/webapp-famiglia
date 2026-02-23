@@ -70,15 +70,16 @@ export async function POST(
 
     // Call Ollama for OCR
     let receiptText = "";
+    let ocrError = null;
     try {
-      const model = "llava:7b";
+      const model = "gemma3"; // More reliable vision model
       
       if (IS_CLOUD) {
         // Use Ollama Cloud API
         console.log("Using Ollama Cloud with model:", model);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
         
         console.log("Sending request to Ollama Cloud...");
         
@@ -94,10 +95,11 @@ export async function POST(
               messages: [
                 {
                   role: "user",
-                  content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
+                  content: "Extract ALL text from this receipt. List every item, price, and total. Return only the raw text.",
                   images: [base64Image],
                 },
               ],
+              stream: false,
             }),
             signal: controller.signal
           });
@@ -107,16 +109,17 @@ export async function POST(
           
           if (!response.ok) {
             const errorText = await response.text();
-            console.error("Ollama Cloud error:", errorText);
-            throw new Error(`Ollama Cloud API error: ${response.status} - ${errorText}`);
+            console.error("Ollama Cloud error:", response.status, errorText);
+            ocrError = `OCR Error: ${response.status} - ${errorText}`;
+          } else {
+            const data = await response.json();
+            console.log("Ollama response:", data);
+            receiptText = data.message?.content?.trim() || "";
           }
-          
-          const data = await response.json();
-          receiptText = data.message.content.trim();
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
-          console.error("OCR Fetch error (fallback to no text):", fetchError.message);
-          receiptText = "";
+          console.error("OCR Fetch error:", fetchError.message);
+          ocrError = `Fetch error: ${fetchError.message}`;
         }
       } else {
         // Use local Ollama
@@ -151,6 +154,7 @@ export async function POST(
       success: true,
       imageUrl,
       receiptText,
+      ocrError,
     });
   } catch (error) {
     console.error("Error uploading receipt:", error);
