@@ -66,29 +66,32 @@ export async function POST(
     const base64Image = buffer.toString("base64");
     const imageUrl = `data:${file.type};base64,${base64Image}`;
 
-    // OCR with Ollama only (Tesseract disabled for serverless)
+    // OCR with Ollama Cloud (OpenAI-compatible endpoint)
     let receiptText = "";
     let ocrError = null;
 
     if (OLLAMA_API_KEY) {
       try {
-        console.log("Calling Ollama Cloud API...");
+        console.log("Calling Ollama Cloud API via OpenAI-compatible endpoint...");
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
         
-        const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        // Use v1/chat/completions (OpenAI-compatible)
+        const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${OLLAMA_API_KEY}`,
           },
           body: JSON.stringify({
-            model: "llava:7b",
+            model: "llava-7b",
             messages: [{
               role: "user",
-              content: "Extract ALL text from this receipt. Return only the raw text.",
-              images: [base64Image],
+              content: [
+                { type: "text", text: "Extract ALL text from this receipt. Return only the raw text." },
+                { type: "image_url", image_url: { url: `data:${file.type};base64,${base64Image}` } }
+              ],
             }],
             stream: false,
           }),
@@ -100,11 +103,12 @@ export async function POST(
         
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Ollama error:", errorText);
+          console.error("Ollama error:", response.status, errorText);
           ocrError = `Ollama error: ${response.status}`;
         } else {
           const data = await response.json();
-          receiptText = data.message?.content?.trim() || "";
+          console.log("Ollama response:", JSON.stringify(data).substring(0, 500));
+          receiptText = data.choices?.[0]?.message?.content?.trim() || "";
         }
       } catch (fetchError: any) {
         console.error("Ollama fetch error:", fetchError.message);
