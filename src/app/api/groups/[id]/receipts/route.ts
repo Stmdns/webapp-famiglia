@@ -7,7 +7,9 @@ import { authOptions } from "@/lib/auth";
 import { writeFile, unlink, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import ollama from "ollama";
+
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
 
 export async function POST(
   req: Request,
@@ -78,23 +80,55 @@ export async function POST(
     // Convert image to base64
     const base64Image = buffer.toString("base64");
 
-    // Call Ollama for OCR
+    // Call Ollama Cloud for OCR
     let receiptText = "";
-    try {
-      const response = await ollama.chat({
-        model: "glm-ocr",
-        messages: [
-          {
-            role: "user",
-            content: "Extract all text from this receipt. Return only the raw text, nothing else. If there's no text, return an empty string.",
-            images: [base64Image],
+    let ocrError = null;
+    
+    if (OLLAMA_API_KEY) {
+      try {
+        console.log("Calling Ollama Cloud...");
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OLLAMA_API_KEY}`,
           },
-        ],
-      });
-      receiptText = response.message.content.trim();
-    } catch (ocrError) {
-      console.error("OCR Error:", ocrError);
-      receiptText = "";
+          body: JSON.stringify({
+            model: "llava:7b",
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: "Extract ALL text from this receipt. List every item, price and total. Return only the raw text." },
+                { type: "image_url", image_url: { url: `data:${file.type};base64,${base64Image}` } }
+              ],
+            }],
+            stream: false,
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        console.log("Ollama Cloud response status:", response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Ollama Cloud error:", response.status, errorText);
+          ocrError = `OCR error: ${response.status}`;
+        } else {
+          const data = await response.json();
+          console.log("Ollama response:", JSON.stringify(data).substring(0, 300));
+          receiptText = data.choices?.[0]?.message?.content?.trim() || "";
+        }
+      } catch (fetchError: any) {
+        console.error("Ollama fetch error:", fetchError.message);
+        ocrError = `OCR failed: ${fetchError.message}`;
+      }
+    } else {
+      ocrError = "Ollama API key not configured";
     }
 
     await db
@@ -106,6 +140,7 @@ export async function POST(
       success: true,
       imageUrl,
       receiptText,
+      ocrError,
     });
   } catch (error) {
     console.error("Error uploading receipt:", error);
