@@ -98,7 +98,7 @@ export async function POST(
             "Authorization": `Bearer ${OLLAMA_API_KEY}`,
           },
           body: JSON.stringify({
-            model: "llava:7b",
+            model: "gemma3",
             messages: [{
               role: "user",
               content: [
