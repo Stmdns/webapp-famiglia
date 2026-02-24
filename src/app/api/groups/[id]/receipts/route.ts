@@ -7,7 +7,6 @@ import { authOptions } from "@/lib/auth";
 import { writeFile, unlink, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import Tesseract from "tesseract.js";
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
@@ -90,7 +89,7 @@ export async function POST(
         console.log("Calling Ollama Cloud...");
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
         
         const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
           method: "POST",
@@ -130,23 +129,6 @@ export async function POST(
       }
     } else {
       ocrError = "Ollama API key not configured";
-    }
-
-    // Fallback to Tesseract if Ollama failed
-    if (!receiptText && ocrError) {
-      try {
-        console.log("Using Tesseract.js fallback...");
-        const result = await Tesseract.recognize(
-          `data:${file.type};base64,${base64Image}`,
-          "ita+eng",
-          { logger: () => {} }
-        );
-        receiptText = result.data.text.trim();
-        console.log("Tesseract result:", receiptText.substring(0, 200));
-        ocrError = null; // Clear error since Tesseract worked
-      } catch (tesseractError: any) {
-        console.error("Tesseract error:", tesseractError.message);
-      }
     }
 
     await db
