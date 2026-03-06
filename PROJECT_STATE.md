@@ -3,7 +3,9 @@
 ## Stato di Sviluppo
 
 **Data:** 2026-03-06  
-**Sessione:** Completata - Debug sessioni
+**Sessione:** Completata - Deploy su Vercel
+
+**URL Produzione:** https://famiglia-budget.vercel.app
 
 ---
 
@@ -15,6 +17,7 @@
 | Database | Turso (libsql) + Drizzle ORM |
 | Auth | NextAuth.js |
 | UI | shadcn/ui + Radix UI |
+| Deploy | Vercel |
 
 ---
 
@@ -91,3 +94,11 @@ oneTimeExpenses (expenseId) - foreign key to recurringExpenses
 drizzle/0003_wild_maria_hill.sql
 - Create table expense_month_overrides
 ```
+
+---
+
+## Commit
+
+**Branch:** main  
+**Commit:** c2eb30e  
+**Message:** feat: implement period-based expense logic

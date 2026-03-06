@@ -3,7 +3,7 @@
 ## Project: Famiglia Budget
 
 **Ultimo aggiornamento:** 2026-03-06  
-**Stato:** Sviluppo - Sessione completata
+**Sessione:** Completata - Deploy su Vercel
 
 ---
 
@@ -13,6 +13,7 @@
 - **State:** Zustand, TanStack Query
 - **Database:** Turso (libsql), Drizzle ORM
 - **Auth:** NextAuth.js (Google + credentials)
+- **Deploy:** Vercel
 
 ---
 
@@ -53,8 +54,8 @@
 | `src/app/api/groups/[id]/expenses/route.ts` | Gestione override e month/year |
 | `src/app/api/groups/[id]/expensePayments/route.ts` | Gestione data pagamento |
 | `src/app/api/groups/[id]/one-time-expenses/route.ts` | Gestione recurringExpenseId |
-| `src/app/groups/[id]/expenses/page.tsx` | Toggle periodi, pagamenti, spamse nascoste |
-| `src/app/groups/[id]/expenses/one-time/page.tsx` | Navigazione + dropdown ricorrenti |
+| `src/app/groups/[id]/expenses/page.tsx` | Toggle periodi, pagamenti, spese nascoste |
+| `src/app/groups/[id]/expenses/one-time/page.tsx` | Navigazione mesi + dropdown ricorrenti |
 | `src/app/groups/[id]/page.tsx` | Dati per periodo corretto |
 
 ---
@@ -79,7 +80,15 @@ drizzle/0003_wild_maria_hill.sql
 
 ---
 
+## Deploy
+
+**URL:** https://famiglia-budget.vercel.app  
+**Branch:** main  
+**Commit:** c2eb30e
+
+---
+
 ## Prossimi Passi
 
-- Testare flusso completo
+- Testare flusso completo su produzione
 - Verificare statistiche aggiornano correttamente
