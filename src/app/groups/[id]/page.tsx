@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { 
   Home, Users, Receipt, BarChart3, ArrowLeft, 
-  TrendingUp, CheckCircle2, AlertCircle, Euro, ShoppingCart
+  TrendingUp, CheckCircle2, AlertCircle, Euro, ShoppingCart, Menu, X
 } from "lucide-react";
 import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -55,6 +55,7 @@ export default function GroupPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [payments, setPayments] = useState<any[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -69,7 +70,7 @@ export default function GroupPage() {
       const [membersRes, categoriesRes, expensesRes, dataRes] = await Promise.all([
         fetch(`/api/groups/${groupId}/members`),
         fetch(`/api/groups/${groupId}/categories`),
-        fetch(`/api/groups/${groupId}/expenses`),
+        fetch(`/api/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`),
         fetch(`/api/groups/${groupId}/payments?month=${currentMonth}&year=${currentYear}`),
       ]);
 
@@ -209,23 +210,23 @@ export default function GroupPage() {
           </div>
         </DialogContent>
       </Dialog>
-      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
+      <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Home className="w-5 h-5 text-white" />
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Home className="w-4 h-4 text-white" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-bold text-slate-900">Dashboard</h1>
                 <p className="text-xs text-slate-500">Mese {currentMonth}/{currentYear}</p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
             <Link href={`/groups/${groupId}/members`}>
               <Button variant="outline" size="sm">
                 <Users className="w-4 h-4 mr-2" />
@@ -251,8 +252,67 @@ export default function GroupPage() {
               </Button>
             </Link>
           </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="md:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
         </div>
       </header>
+
+      {sidebarOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="fixed top-0 right-0 h-full w-64 bg-white z-50 shadow-xl md:hidden animate-in slide-in-from-right">
+            <div className="flex items-center justify-between p-4 border-b">
+              <span className="font-bold text-slate-900">Menu</span>
+              <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <nav className="p-4 space-y-2">
+              <Link 
+                href={`/groups/${groupId}/members`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <Users className="w-5 h-5" />
+                Membri
+              </Link>
+              <Link 
+                href={`/groups/${groupId}/expenses`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <Receipt className="w-5 h-5" />
+                Spese Fisse
+              </Link>
+              <Link 
+                href={`/groups/${groupId}/expenses/one-time`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <ShoppingCart className="w-5 h-5" />
+                Spese Singole
+              </Link>
+              <Link 
+                href={`/groups/${groupId}/reports`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <BarChart3 className="w-5 h-5" />
+                Report
+              </Link>
+            </nav>
+          </div>
+        </>
+      )}
 
       <main className="max-w-6xl mx-auto p-6">
         <Tabs defaultValue="overview" className="space-y-6">

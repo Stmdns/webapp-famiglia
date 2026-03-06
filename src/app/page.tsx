@@ -45,7 +45,8 @@ export default function HomePage() {
       if (result?.error) {
         toast.error(result.error);
       } else {
-        router.push("/dashboard");
+        const lastGroup = localStorage.getItem("lastGroupId");
+        router.push(lastGroup ? `/groups/${lastGroup}` : "/dashboard");
       }
     } catch (error) {
       toast.error("Errore di connessione");
@@ -68,12 +69,15 @@ export default function HomePage() {
       toast.error(result.error);
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      const lastGroup = localStorage.getItem("lastGroupId");
+      router.push(lastGroup ? `/groups/${lastGroup}` : "/dashboard");
     }
   };
 
   const handleGoogleLogin = () => {
-    signIn("google", { callbackUrl: "/dashboard" });
+    const lastGroup = localStorage.getItem("lastGroupId");
+    const callbackUrl = lastGroup ? `/groups/${lastGroup}` : "/dashboard";
+    signIn("google", { callbackUrl });
   };
 
   return (

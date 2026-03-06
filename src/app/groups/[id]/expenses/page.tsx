@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, ChevronLeft, ChevronRight, Menu, ChevronDown, EyeOff } from "lucide-react";
 import Link from "next/link";
 import {
   DropdownMenu,
@@ -42,12 +42,16 @@ interface Expense {
   startYear?: number | null;
   endMonth?: number | null;
   endYear?: number | null;
+  isActiveForMonth?: boolean;
+  isHidden?: boolean;
 }
 
 interface ExpensePayment {
   id: string;
   expenseId: string;
   amount: number;
+  date?: string;
+  dayOfMonth?: number;
 }
 
 const FREQUENCIES = [
@@ -95,6 +99,8 @@ export default function ExpensesPage() {
   const [newEndMonth, setNewEndMonth] = useState("");
   const [newEndYear, setNewEndYear] = useState("");
 
+  const [hiddenSectionOpen, setHiddenSectionOpen] = useState(false);
+
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
 
@@ -112,7 +118,7 @@ export default function ExpensesPage() {
   const fetchData = async () => {
     try {
       const [expensesRes, categoriesRes, paymentsRes] = await Promise.all([
-        fetch(`/api/groups/${groupId}/expenses?month=${currentMonthState}&year=${currentYearState}`),
+        fetch(`/api/groups/${groupId}/expenses?month=${currentMonthState}&year=${currentYearState}&includeHidden=true`),
         fetch(`/api/groups/${groupId}/categories`),
         fetch(`/api/groups/${groupId}/expensePayments?month=${currentMonthState}&year=${currentYearState}`),
       ]);
@@ -146,24 +152,58 @@ export default function ExpensesPage() {
     }
   };
 
-  const openPaymentDialog = (expenseId: string, currentAmount: number) => {
+  const openPaymentDialog = (expenseId: string, expectedAmount: number, paidAmount: number) => {
     setSelectedExpenseId(expenseId);
-    setPaymentAmount(currentAmount > 0 ? currentAmount.toString() : "");
+    // Importo da pagare = importo atteso - già pagato
+    const amountToPay = Math.max(0, expectedAmount - paidAmount);
+    setPaymentAmount(amountToPay > 0 ? amountToPay.toString() : "");
     setPaymentDialogOpen(true);
+    
+    // Se l'utente ha già pagato qualcosa, mostrare il toggle per modificare
+    setAllowAmountChange(paidAmount > 0);
+    
+    // Calcola l'ultimo giorno del mese corrente del gestionale
+    const lastDay = new Date(currentYearState, currentMonthState, 0).getDate();
+    setPaymentDay(lastDay);
+    setUseSameDay(false);
   };
+
+  const [paymentDay, setPaymentDay] = useState(1);
+  const [useSameDay, setUseSameDay] = useState(false);
+  const [allowAmountChange, setAllowAmountChange] = useState(false);
+  
+  // Calcola la data fittizia per il pagamento (ultimo giorno del mese)
+  const paymentDate = useMemo(() => {
+    if (useSameDay) {
+      return new Date(currentYearState, currentMonthState - 1, paymentDay).toISOString().split('T')[0];
+    } else {
+      const lastDay = new Date(currentYearState, currentMonthState, 0).getDate();
+      return new Date(currentYearState, currentMonthState - 1, lastDay).toISOString().split('T')[0];
+    }
+  }, [currentYearState, currentMonthState, useSameDay, paymentDay]);
+
+  // Se permetti modifica, usa l'input altrimenti usa amountToPay
+  const paymentAmountToUse = allowAmountChange ? paymentAmount : "";
 
   const savePayment = async () => {
     if (!selectedExpenseId || !paymentAmount) return;
 
     try {
+      // Calcola la data di pagamento (ultima del mese o giorno selezionato)
+      const paymentDate = useSameDay 
+        ? new Date(currentYearState, currentMonthState - 1, paymentDay)
+        : new Date(currentYearState, currentMonthState, 0); // Ultimo giorno del mese
+
       const res = await fetch(`/api/groups/${groupId}/expensePayments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expenseId: selectedExpenseId,
-          month: currentMonth,
-          year: currentYear,
+          month: currentMonthState,
+          year: currentYearState,
           amount: paymentAmount,
+          date: paymentDate.toISOString(),
+          dayOfMonth: paymentDay,
         }),
       });
 
@@ -175,7 +215,13 @@ export default function ExpensesPage() {
           setExpensePayments(updated);
         } else {
           const data = await res.json();
-          setExpensePayments([...expensePayments, { id: data.id, expenseId: selectedExpenseId, amount: parseFloat(paymentAmount) }]);
+          setExpensePayments([...expensePayments, { 
+            id: data.id, 
+            expenseId: selectedExpenseId, 
+            amount: parseFloat(paymentAmount),
+            date: paymentDate.toISOString(),
+            dayOfMonth: paymentDay
+          }]);
         }
         setPaymentDialogOpen(false);
         toast.success("Pagamento registrato!");
@@ -246,6 +292,9 @@ export default function ExpensesPage() {
           startYear: editStartYear || null,
           endMonth: editEndMonth || null,
           endYear: editEndYear || null,
+          // Passa il mese corrente per aggiornare l'override
+          month: currentMonthState,
+          year: currentYearState,
         }),
       });
 
@@ -321,6 +370,8 @@ export default function ExpensesPage() {
       const expense = expenses.find(e => e.id === expenseId);
       if (!expense) return;
 
+      const newIsActive = !isActive;
+
       const res = await fetch(`/api/groups/${groupId}/expenses`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -331,14 +382,19 @@ export default function ExpensesPage() {
           categoryId: expense.categoryId,
           frequencyType: expense.frequencyType,
           frequencyValue: expense.frequencyValue,
-          isActive: !isActive,
+          isActive: newIsActive,
+          startMonth: expense.startMonth,
+          startYear: expense.startYear,
+          endMonth: expense.endMonth,
+          endYear: expense.endYear,
+          // Passa il mese corrente per creare override
+          month: currentMonthState,
+          year: currentYearState,
         }),
       });
 
       if (res.ok) {
-        setExpenses(expenses.map(e => 
-          e.id === expenseId ? { ...e, isActive: !isActive } : e
-        ));
+        fetchData();
       }
     } catch (error) {
       toast.error("Errore");
@@ -375,8 +431,12 @@ export default function ExpensesPage() {
     setNewEndYear("");
   };
 
-  const activeExpenses = expenses.filter(e => e.isActive);
-  const totalMonthly = activeExpenses.reduce((sum, e) => sum + (e.monthlyAmount || calculateMonthly(e.amount, e.frequencyType, e.frequencyValue)), 0);
+  // Spese visibili (attive per questo mese)
+  const visibleExpenses = expenses.filter(e => !e.isHidden);
+  // Spese nascoste (non attive per questo mese)
+  const hiddenExpenses = expenses.filter(e => e.isHidden);
+  
+  const totalMonthly = visibleExpenses.reduce((sum, e) => sum + (e.monthlyAmount || calculateMonthly(e.amount, e.frequencyType, e.frequencyValue)), 0);
   const totalPaid = expensePayments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = totalMonthly - totalPaid;
 
@@ -405,10 +465,49 @@ export default function ExpensesPage() {
                 placeholder="0.00"
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
+                disabled={!allowAmountChange}
               />
-            </div>
-            <Button onClick={savePayment} className="w-full">Salva</Button>
-          </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={allowAmountChange}
+                  onCheckedChange={setAllowAmountChange}
+                  disabled={false}
+                />
+                <span className="text-xs text-slate-500">Modifica importo</span>
+              </div>
+              <p className="text-xs text-slate-500">
+                {!allowAmountChange 
+                  ? `Importo da pagare: € ${paymentAmount}` 
+                  : "Inserisci l'importo pagato"
+                }
+              </p>
+                <Label>Data pagamento</Label>
+                <Input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const date = new Date(e.target.value);
+                      setPaymentDay(date.getDate());
+                      setUseSameDay(true);
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={useSameDay}
+                    onCheckedChange={setUseSameDay}
+                  />
+                  <span className="text-xs text-slate-500">
+                    {useSameDay 
+                      ? "Usa il giorno selezionato" 
+                      : `Usa l'ultimo giorno del mese (${new Date(currentYearState, currentMonthState, 0).getDate()})`
+                    }
+                  </span>
+                </div>
+              </div>
+             <Button onClick={savePayment} className="w-full">Salva</Button>
+           </div>
         </DialogContent>
       </Dialog>
 
@@ -432,42 +531,40 @@ export default function ExpensesPage() {
           </div>
           
           <div className="flex items-center gap-1">
-            {/* Month navigation - hidden on small mobile */}
-            <div className="hidden sm:flex items-center gap-1">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8"
-                onClick={() => {
-                  if (currentMonthState === 1) {
-                    setCurrentMonthState(12);
-                    setCurrentYearState(currentYearState - 1);
-                  } else {
-                    setCurrentMonthState(currentMonthState - 1);
-                  }
-                }}
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-sm font-medium min-w-[60px] text-center">
-                {['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][currentMonthState-1]} {currentYearState}
-              </span>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8"
-                onClick={() => {
-                  if (currentMonthState === 12) {
-                    setCurrentMonthState(1);
-                    setCurrentYearState(currentYearState + 1);
-                  } else {
-                    setCurrentMonthState(currentMonthState + 1);
-                  }
-                }}
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
+            {/* Month navigation */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => {
+                if (currentMonthState === 1) {
+                  setCurrentMonthState(12);
+                  setCurrentYearState(currentYearState - 1);
+                } else {
+                  setCurrentMonthState(currentMonthState - 1);
+                }
+              }}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[50px] sm:min-w-[60px] text-center">
+              {['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][currentMonthState-1]} {currentYearState}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => {
+                if (currentMonthState === 12) {
+                  setCurrentMonthState(1);
+                  setCurrentYearState(currentYearState + 1);
+                } else {
+                  setCurrentMonthState(currentMonthState + 1);
+                }
+              }}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
             
             {/* Desktop: Show add button */}
             <div className="hidden md:block">
@@ -652,7 +749,7 @@ export default function ExpensesPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">€ {totalMonthly.toFixed(2)}</div>
-              <p className="text-xs text-blue-100 mt-1">{activeExpenses.length} spese attive</p>
+              <p className="text-xs text-blue-100 mt-1">{visibleExpenses.length} spese</p>
             </CardContent>
           </Card>
 
@@ -684,19 +781,21 @@ export default function ExpensesPage() {
         </div>
 
         <div className="space-y-3">
-          {expenses.map((expense) => {
+          {/* Spese Visibili */}
+          {visibleExpenses.map((expense) => {
             const paidAmount = getExpensePaidAmount(expense.id);
             const expectedAmount = expense.monthlyAmount || calculateMonthly(expense.amount, expense.frequencyType, expense.frequencyValue);
             const isPaid = paidAmount >= expectedAmount;
+            const isExpenseActive = expense.isActiveForMonth ?? expense.isActive;
             
             return (
-              <Card key={expense.id} className={`transition-opacity ${!expense.isActive && 'opacity-50'}`}>
+              <Card key={expense.id} className={`transition-opacity ${!isExpenseActive && 'opacity-50'}`}>
                 <CardContent className="py-4">
                   {editingId === expense.id ? (
                     <div className="flex items-center gap-3">
                       <Switch
-                        checked={expense.isActive}
-                        onCheckedChange={() => toggleExpense(expense.id, expense.isActive)}
+                        checked={expense.isActiveForMonth ?? expense.isActive}
+                        onCheckedChange={() => toggleExpense(expense.id, expense.isActiveForMonth ?? expense.isActive)}
                       />
                       <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-2">
                         <Input
@@ -769,8 +868,8 @@ export default function ExpensesPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <Switch
-                          checked={expense.isActive}
-                          onCheckedChange={() => toggleExpense(expense.id, expense.isActive)}
+                          checked={expense.isActiveForMonth ?? expense.isActive}
+                          onCheckedChange={() => toggleExpense(expense.id, expense.isActiveForMonth ?? expense.isActive)}
                         />
                         <div 
                           className="w-3 h-3 rounded-full"
@@ -799,7 +898,8 @@ export default function ExpensesPage() {
                           variant="ghost" 
                           size="icon"
                           className={`${isPaid ? 'text-green-500 hover:text-green-700' : 'text-amber-500 hover:text-amber-700'} hover:bg-slate-100`}
-                          onClick={() => openPaymentDialog(expense.id, paidAmount)}
+                          onClick={() => openPaymentDialog(expense.id, expectedAmount, paidAmount)}
+                          disabled={!isExpenseActive}
                         >
                           <DollarSign className="w-4 h-4" />
                         </Button>
@@ -818,6 +918,7 @@ export default function ExpensesPage() {
                           size="icon"
                           className="text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                           onClick={() => startEdit(expense)}
+                          disabled={!isExpenseActive}
                         >
                           <Pencil className="w-4 h-4" />
                         </Button>
@@ -826,6 +927,7 @@ export default function ExpensesPage() {
                           size="icon"
                           className="text-red-500 hover:text-red-700 hover:bg-red-50"
                           onClick={() => deleteExpense(expense.id)}
+                          disabled={!isExpenseActive}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -836,6 +938,80 @@ export default function ExpensesPage() {
               </Card>
             );
           })}
+          {/* Spese Nascoste */}
+          {hiddenExpenses.length > 0 && (
+            <div className="mt-6">
+              <button
+                onClick={() => setHiddenSectionOpen(!hiddenSectionOpen)}
+                className="flex items-center gap-2 w-full p-3 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                <ChevronDown className={`w-4 h-4 transition-transform ${hiddenSectionOpen ? 'rotate-180' : ''}`} />
+                <EyeOff className="w-4 h-4 text-slate-500" />
+                <span className="font-medium">Spese Nascoste</span>
+                <span className="ml-auto bg-slate-300 text-slate-700 text-xs px-2 py-0.5 rounded-full">
+                  {hiddenExpenses.length}
+                </span>
+              </button>
+              
+              {hiddenSectionOpen && (
+                <div className="mt-3 space-y-3 pl-2 border-l-2 border-slate-300">
+                  {hiddenExpenses.map((expense) => {
+                    const expectedAmount = expense.monthlyAmount || calculateMonthly(expense.amount, expense.frequencyType, expense.frequencyValue);
+                    
+                    return (
+                      <Card key={expense.id} className="opacity-60 bg-slate-50">
+                        <CardContent className="py-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                      <Switch
+                        checked={expense.isActiveForMonth ?? expense.isActive}
+                        onCheckedChange={() => toggleExpense(expense.id, expense.isActiveForMonth ?? expense.isActive)}
+                      />
+                              <div 
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: expense.category?.color || '#6b7280' }}
+                              />
+                              <div>
+                                <p className="font-medium">{expense.name}</p>
+                                <p className="text-sm text-slate-500">
+                                  {expense.frequencyType === 'weekly' && 'Settimanale'}
+                                  {expense.frequencyType === 'monthly' && 'Mensile'}
+                                  {expense.frequencyType === 'yearly' && 'Annuale'}
+                                  {expense.frequencyType === 'days' && `Ogni ${expense.frequencyValue} giorni`}
+                                  {expense.frequencyType === 'months' && `Ogni ${expense.frequencyValue} mesi`}
+                                  {expense.category && ` • ${expense.category.name}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="font-bold text-slate-400">€ {expectedAmount.toFixed(2)}/mese</p>
+                                <p className="text-xs text-slate-400">
+                                  {expense.endMonth && expense.endYear 
+                                    ? `Nascosta da ${['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][expense.endMonth-1]} ${expense.endYear}`
+                                    : 'Disattivata'
+                                  }
+                                </p>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => deleteExpense(expense.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {expenses.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center">

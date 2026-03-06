@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { db } from "@/db";
-import { expensePayments, groups, groupMembers, recurringExpenses, oneTimeExpenses } from "@/db/schema";
+import { expensePayments, groups, groupMembers, recurringExpenses, oneTimeExpenses, expenseMonthOverrides } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { authOptions } from "@/lib/auth";
@@ -59,10 +59,33 @@ export async function GET(
       .from(recurringExpenses)
       .where(eq(recurringExpenses.groupId, id));
 
-    const result = payments.map((payment) => ({
-      ...payment,
-      expense: expenses.find((e) => e.id === payment.expenseId),
-    }));
+    // Carica gli override per il mese
+    const overrides = await db
+      .select()
+      .from(expenseMonthOverrides)
+      .where(and(
+        eq(expenseMonthOverrides.month, month),
+        eq(expenseMonthOverrides.year, year)
+      ));
+    const overrideMap = new Map(overrides.map(o => [o.expenseId, o.isActive]));
+
+    const isExpenseActiveForMonth = (expense: any) => {
+      if (overrideMap.has(expense.id)) {
+        return overrideMap.get(expense.id);
+      }
+      return expense.isActive;
+    };
+
+    const result = payments.map((payment) => {
+      const expense = expenses.find((e) => e.id === payment.expenseId);
+      return {
+        ...payment,
+        expense: expense ? {
+          ...expense,
+          isActiveForMonth: expense ? isExpenseActiveForMonth(expense) : true
+        } : null,
+      };
+    });
 
     return NextResponse.json(result);
   } catch (error) {
@@ -115,16 +138,31 @@ export async function POST(
       .where(eq(recurringExpenses.id, expenseId))
       .limit(1);
 
+    // Calcola la data di pagamento
+    // Se fornita nel body, usala; altrimenti usa l'ultimo giorno del mese
+    let paidAt = new Date();
+    const paymentDay = body.dayOfMonth;
+    if (paymentDay) {
+      paidAt = new Date(parseInt(year), parseInt(month) - 1, paymentDay);
+    } else {
+      paidAt = new Date(parseInt(year), parseInt(month), 0); // Ultimo giorno del mese
+    }
+
     if (existing) {
       await db
         .update(expensePayments)
-        .set({ amount: parseFloat(amount), paidAt: new Date() })
+        .set({ amount: parseFloat(amount), paidAt })
         .where(eq(expensePayments.id, existing.id));
       
+      // Aggiorna anche la spesa one-time (se esiste)
       if (expense) {
         await db
           .update(oneTimeExpenses)
-          .set({ amount: parseFloat(amount), isPaid: true })
+          .set({ 
+            amount: parseFloat(amount), 
+            isPaid: true,
+            date: paidAt
+          })
           .where(and(
             eq(oneTimeExpenses.expenseId, expenseId),
             eq(oneTimeExpenses.month, parseInt(month)),
@@ -143,7 +181,31 @@ export async function POST(
       month: parseInt(month),
       year: parseInt(year),
       amount: parseFloat(amount),
+      paidAt: paidAt,
     });
+
+    // Aggiorna la tabella di override se presente (se la spesa è stata disattivata per questo mese)
+    if (expense) {
+      // Cerca se esiste un override per disattivare questa spesa
+      const [existingOverride] = await db
+        .select()
+        .from(expenseMonthOverrides)
+        .where(and(
+          eq(expenseMonthOverrides.expenseId, expenseId),
+          eq(expenseMonthOverrides.month, parseInt(month)),
+          eq(expenseMonthOverrides.year, parseInt(year))
+        ))
+        .limit(1);
+      
+      // Se c'è un override che disattiva la spesa, ma ora c'è un pagamento,
+      // dobbiamo creare un override che la riattiva per questo mese
+      if (existingOverride && !existingOverride.isActive) {
+        await db
+          .update(expenseMonthOverrides)
+          .set({ isActive: true })
+          .where(eq(expenseMonthOverrides.id, existingOverride.id));
+      }
+    }
 
     if (expense) {
       const oneTimeId = uuid();

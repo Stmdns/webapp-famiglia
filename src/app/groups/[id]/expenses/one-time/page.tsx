@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, Camera, Menu } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, Calendar, Pencil, Check, X, DollarSign, Camera, Menu, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRef } from "react";
 import {
@@ -89,9 +89,13 @@ export default function OneTimeExpensesPage() {
   const [newAmount, setNewAmount] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newDate, setNewDate] = useState("");
+  const [selectedRecurringExpense, setSelectedRecurringExpense] = useState<string | null>(null);
 
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
+
+  const [currentMonthState, setCurrentMonthState] = useState(currentMonth);
+  const [currentYearState, setCurrentYearState] = useState(currentYear);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -99,14 +103,14 @@ export default function OneTimeExpensesPage() {
     } else if (status === "authenticated") {
       fetchData();
     }
-  }, [status, router]);
+  }, [status, router, currentMonthState, currentYearState]);
 
   const fetchData = async () => {
     try {
       const [expensesRes, categoriesRes, recurringRes] = await Promise.all([
-        fetch(`/api/groups/${groupId}/one-time-expenses?month=${currentMonth}&year=${currentYear}`),
+        fetch(`/api/groups/${groupId}/one-time-expenses?month=${currentMonthState}&year=${currentYearState}`),
         fetch(`/api/groups/${groupId}/categories`),
-        fetch(`/api/groups/${groupId}/expenses`),
+        fetch(`/api/groups/${groupId}/expenses?month=${currentMonthState}&year=${currentYearState}`),
       ]);
 
       if (expensesRes.ok) setExpenses(await expensesRes.json());
@@ -146,6 +150,7 @@ export default function OneTimeExpensesPage() {
     setEditAmount(expense.amount.toString());
     setEditCategory(expense.categoryId || "");
     setEditDate(expense.date.split('T')[0]);
+    setSelectedRecurringExpense(expense.expenseId || null);
   };
 
   const cancelEdit = () => {
@@ -154,23 +159,28 @@ export default function OneTimeExpensesPage() {
     setEditAmount("");
     setEditCategory("");
     setEditDate("");
+    setSelectedRecurringExpense(null);
   };
 
   const saveEdit = async (expenseId: string) => {
+    const existingExpense = expenses.find(e => e.id === expenseId);
+    if (!existingExpense) return;
+
     try {
       const res = await fetch(`/api/groups/${groupId}/one-time-expenses`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          expenseId,
-          name: editName,
-          amount: editAmount,
-          categoryId: editCategory || null,
-          date: editDate,
-          month: currentMonth,
-          year: currentYear,
-          isPaid: expenses.find(e => e.id === expenseId)?.isPaid ?? false,
-        }),
+      body: JSON.stringify({
+        expenseId: expenseId,
+        name: editName,
+        amount: editAmount,
+        categoryId: editCategory || null,
+        date: editDate,
+        month: existingExpense.month,
+        year: existingExpense.year,
+        isPaid: existingExpense.isPaid,
+        recurringExpenseId: selectedRecurringExpense || null,
+      }),
       });
 
       if (res.ok) {
@@ -243,8 +253,9 @@ export default function OneTimeExpensesPage() {
           amount: newAmount,
           categoryId: newCategory || null,
           date: newDate,
-          month: currentMonth,
-          year: currentYear,
+          month: currentMonthState,
+          year: currentYearState,
+          expenseId: selectedRecurringExpense || null,
         }),
       });
 
@@ -254,10 +265,11 @@ export default function OneTimeExpensesPage() {
         setExpenses([...expenses, { 
           ...expense, 
           date: newDate,
-          month: currentMonth,
-          year: currentYear,
+          month: currentMonthState,
+          year: currentYearState,
           isPaid: false,
           category,
+          expenseId: selectedRecurringExpense || undefined,
         }]);
         setDialogOpen(false);
         resetForm();
@@ -392,11 +404,48 @@ export default function OneTimeExpensesPage() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg font-bold text-slate-900 truncate">Spese Singole</h1>
-                <p className="text-xs text-slate-500 hidden sm:block">{months[currentMonth - 1]} {currentYear}</p>
+                <p className="text-xs text-slate-500 hidden sm:block">{months[currentMonthState - 1]} {currentYearState}</p>
               </div>
             </div>
           </div>
           
+          <div className="flex items-center gap-1">
+            {/* Month navigation */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => {
+                if (currentMonthState === 1) {
+                  setCurrentMonthState(12);
+                  setCurrentYearState(currentYearState - 1);
+                } else {
+                  setCurrentMonthState(currentMonthState - 1);
+                }
+              }}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[50px] sm:min-w-[60px] text-center">
+              {months[currentMonthState - 1]} {currentYearState}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => {
+                if (currentMonthState === 12) {
+                  setCurrentMonthState(1);
+                  setCurrentYearState(currentYearState + 1);
+                } else {
+                  setCurrentMonthState(currentMonthState + 1);
+                }
+              }}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+            
           {/* Desktop: Show button directly */}
           <div className="hidden md:block">
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -459,6 +508,58 @@ export default function OneTimeExpensesPage() {
                     required
                   />
                 </div>
+                
+                {/* Dropdown spesa ricorrente (solo se ci sono ricorrenti con la stessa categoria) */}
+                {(() => {
+                  const speseRicorrentiCategoria = recurringExpenses.filter(
+                    e => e.categoryId === newCategory && e.isActive
+                  );
+                  if (speseRicorrentiCategoria.length > 0) {
+                    return (
+                      <div className="space-y-2">
+                        <Label>Collega a spesa ricorrente</Label>
+                        <Select 
+                          value={selectedRecurringExpense || "none"} 
+                          onValueChange={(v) => setSelectedRecurringExpense(v === "none" ? null : v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Scegli una spesa ricorrente" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {speseRicorrentiCategoria.length === 1 ? (
+                              <SelectItem key={speseRicorrentiCategoria[0].id} value={speseRicorrentiCategoria[0].id}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: speseRicorrentiCategoria[0].category?.color || '#6b7280' }} />
+                                  {speseRicorrentiCategoria[0].name} ({speseRicorrentiCategoria[0].category?.name || 'Nessuna categoria'})
+                                </div>
+                              </SelectItem>
+                            ) : (
+                              <>
+                                <SelectItem value="none">Nessuna (spesa singola)</SelectItem>
+                                {speseRicorrentiCategoria.map((e) => (
+                                  <SelectItem key={e.id} value={e.id}>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: e.category?.color || '#6b7280' }} />
+                                      {e.name} ({e.category?.name || 'Nessuna categoria'})
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-slate-500">
+                          {speseRicorrentiCategoria.length === 1 
+                            ? "Un'unica spesa ricorrente trovata - allegata automaticamente" 
+                            : "Seleziona a quale spesa ricorrenteassociare questa spesa"
+                          }
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                
                 <Button type="submit" className="w-full">Aggiungi</Button>
               </form>
             </DialogContent>
@@ -607,7 +708,59 @@ export default function OneTimeExpensesPage() {
                             onChange={(e) => setEditDate(e.target.value)}
                           />
                         </div>
-                        <div className="flex items-center gap-1">
+                        
+                        {/* Dropdown spesa ricorrente */}
+                        {(() => {
+                          const speseRicorrentiCategoria = recurringExpenses.filter(
+                            e => e.categoryId === editCategory && e.isActive
+                          );
+                          if (speseRicorrentiCategoria.length > 0) {
+                            return (
+                              <div className="col-span-4 space-y-2">
+                                <Label>Collega a spesa ricorrente</Label>
+                                <Select 
+                                  value={selectedRecurringExpense || "none"} 
+                                  onValueChange={(v) => setSelectedRecurringExpense(v === "none" ? null : v)}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Scegli una spesa ricorrente" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {speseRicorrentiCategoria.length === 1 ? (
+                                      <SelectItem key={speseRicorrentiCategoria[0].id} value={speseRicorrentiCategoria[0].id}>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: speseRicorrentiCategoria[0].category?.color || '#6b7280' }} />
+                                          {speseRicorrentiCategoria[0].name}
+                                        </div>
+                                      </SelectItem>
+                                    ) : (
+                                      <>
+                                        <SelectItem value="none">Nessuna (spesa singola)</SelectItem>
+                                        {speseRicorrentiCategoria.map((e) => (
+                                          <SelectItem key={e.id} value={e.id}>
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: e.category?.color || '#6b7280' }} />
+                                              {e.name}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-xs text-slate-500">
+                                  {speseRicorrentiCategoria.length === 1 
+                                    ? "Un'unica spesa ricorrente trovata - allegata automaticamente" 
+                                    : "Seleziona a quale spesa ricorrente allegare questa spesa"
+                                  }
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                        
+                        <div className="col-span-4 flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"

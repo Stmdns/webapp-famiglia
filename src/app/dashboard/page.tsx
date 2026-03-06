@@ -30,6 +30,11 @@ export default function Dashboard() {
     if (status === "unauthenticated") {
       router.push("/");
     } else if (status === "authenticated") {
+      const lastGroupId = localStorage.getItem("lastGroupId");
+      if (lastGroupId) {
+        router.push(`/groups/${lastGroupId}`);
+        return;
+      }
       fetchGroups();
     }
   }, [status, router]);
@@ -74,6 +79,7 @@ export default function Dashboard() {
 
   const enterGroup = (groupId: string) => {
     setCurrentGroup(groupId);
+    localStorage.setItem("lastGroupId", groupId);
     router.push(`/groups/${groupId}`);
   };
 

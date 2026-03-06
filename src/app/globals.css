@@ -36,3 +36,29 @@ body {
   color: var(--color-foreground);
   font-family: var(--font-sans);
 }
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-in {
+  animation: slideInFromRight 0.2s ease-out;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-in {
+  animation: slideInFromRight 0.2s ease-out;
+}

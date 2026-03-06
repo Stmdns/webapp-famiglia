@@ -55,6 +55,16 @@ export const recurringExpenses = sqliteTable("recurring_expenses", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
+// Tabella per memorizzare lo stato attivo/disattivo per ogni mese specifico
+export const expenseMonthOverrides = sqliteTable("expense_month_overrides", {
+  id: text("id").primaryKey(),
+  expenseId: text("expense_id").notNull().references(() => recurringExpenses.id, { onDelete: "cascade" }),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
 export const oneTimeExpenses = sqliteTable("one_time_expenses", {
   id: text("id").primaryKey(),
   groupId: text("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
@@ -163,6 +173,13 @@ export const expensePaymentsRelations = relations(expensePayments, ({ one }) => 
   }),
 }));
 
+export const expenseMonthOverridesRelations = relations(expenseMonthOverrides, ({ one }) => ({
+  expense: one(recurringExpenses, {
+    fields: [expenseMonthOverrides.expenseId],
+    references: [recurringExpenses.id],
+  }),
+}));
+
 export const paymentsRelations = relations(payments, ({ one }) => ({
   group: one(groups, {
     fields: [payments.groupId],
@@ -187,3 +204,4 @@ export type RecurringExpense = typeof recurringExpenses.$inferSelect;
 export type OneTimeExpense = typeof oneTimeExpenses.$inferSelect;
 export type ExpensePayment = typeof expensePayments.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+export type ExpenseMonthOverride = typeof expenseMonthOverrides.$inferSelect;

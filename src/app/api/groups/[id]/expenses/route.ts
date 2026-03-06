@@ -1,29 +1,32 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { db } from "@/db";
-import { recurringExpenses, groups, groupMembers, expenseCategories } from "@/db/schema";
+import { recurringExpenses, groups, groupMembers, expenseCategories, expenseMonthOverrides } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { authOptions } from "@/lib/auth";
 
-function isExpenseActiveForMonth(
-  expense: { isActive: boolean; startMonth: number | null; startYear: number | null; endMonth: number | null; endYear: number | null },
+function isExpenseInDateRange(
+  expense: { startMonth: number | null; startYear: number | null; endMonth: number | null; endYear: number | null },
   month: number,
   year: number
 ): boolean {
-  if (!expense.isActive) return false;
+  // Controlla se è nel periodo di validità
+  // Se startMonth/startYear sono definiti, la spesa inizia da quel mese
+  if (expense.startMonth !== null && expense.startYear !== null) {
+    if (year < expense.startYear || (year === expense.startYear && month < expense.startMonth)) {
+      return false;
+    }
+  }
   
-  const start = expense.startYear !== null && expense.startMonth !== null 
-    ? new Date(expense.startYear, expense.startMonth - 1)
-    : new Date(2000, 0);
-    
-  const end = expense.endYear !== null && expense.endMonth !== null 
-    ? new Date(expense.endYear, expense.endMonth - 1)
-    : new Date(2100, 11);
-    
-  const current = new Date(year, month - 1);
+  // Se endMonth/endYear sono definiti, la spesa termina quel mese
+  if (expense.endMonth !== null && expense.endYear !== null) {
+    if (year > expense.endYear || (year === expense.endYear && month > expense.endMonth)) {
+      return false;
+    }
+  }
   
-  return current >= start && current <= end;
+  return true;
 }
 
 export async function GET(
@@ -40,6 +43,7 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
     const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
+    const includeHidden = searchParams.get("includeHidden") === "true";
 
     const [group] = await db
       .select()
@@ -62,13 +66,63 @@ export async function GET(
       .from(expenseCategories)
       .where(eq(expenseCategories.groupId, id));
 
-    const expenses = allExpenses.filter(e => isExpenseActiveForMonth(e, month, year));
+    // Carica gli override per il mese richiesto
+    const overrides = await db
+      .select()
+      .from(expenseMonthOverrides)
+      .where(and(
+        eq(expenseMonthOverrides.month, month),
+        eq(expenseMonthOverrides.year, year)
+      ));
 
-    const result = expenses.map((expense) => ({
-      ...expense,
-      category: categories.find((c) => c.id === expense.categoryId),
-      isActiveForMonth: true,
-    }));
+    // Crea una mappa per lookup veloce
+    const overrideMap = new Map(overrides.map(o => [o.expenseId, o.isActive]));
+
+    // Filtra le spese in base al mese/anno e agli override
+    let expenses = allExpenses.filter(e => {
+      const inDateRange = isExpenseInDateRange(e, month, year);
+      if (!inDateRange) return false;
+      
+      // Se c'è un override per questo mese, usa quello
+      if (overrideMap.has(e.id)) {
+        return overrideMap.get(e.id);
+      }
+      
+      // Altrimenti usa isActive globale
+      return e.isActive;
+    });
+
+    // Se richiesto, includi anche le spese "nascoste" (non attive per questo mese)
+    if (includeHidden) {
+      const hiddenExpenses = allExpenses.filter(e => {
+        const inDateRange = isExpenseInDateRange(e, month, year);
+        if (!inDateRange) return false;
+        
+        if (overrideMap.has(e.id)) {
+          return !overrideMap.get(e.id);
+        }
+        
+        return !e.isActive;
+      });
+      expenses = [...expenses, ...hiddenExpenses];
+    }
+
+    const result = expenses.map((expense) => {
+      // Determina lo stato per questo mese
+      let isActiveForMonth: boolean;
+      if (overrideMap.has(expense.id)) {
+        isActiveForMonth = overrideMap.get(expense.id)!;
+      } else {
+        isActiveForMonth = expense.isActive;
+      }
+      
+      return {
+        ...expense,
+        category: categories.find((c) => c.id === expense.categoryId),
+        isActiveForMonth,
+        isHidden: !isActiveForMonth,
+      };
+    });
 
     return NextResponse.json(result);
   } catch (error) {
@@ -126,7 +180,16 @@ export async function POST(
       updatedAt: now,
     });
 
-    return NextResponse.json({ id: expenseId, name, amount, frequencyType });
+    return NextResponse.json({ 
+      id: expenseId, 
+      name, 
+      amount, 
+      frequencyType,
+      startMonth: startMonth ? parseInt(startMonth) : null,
+      startYear: startYear ? parseInt(startYear) : null,
+      endMonth: endMonth ? parseInt(endMonth) : null,
+      endYear: endYear ? parseInt(endYear) : null,
+    });
   } catch (error) {
     console.error("Error creating expense:", error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
@@ -157,23 +220,58 @@ export async function PUT(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await db
-      .update(recurringExpenses)
-      .set({
-        name,
-        amount: parseFloat(amount),
-        categoryId: categoryId || null,
-        frequencyType,
-        frequencyValue: frequencyValue || 1,
-        dayOfMonth: dayOfMonth || null,
-        isActive,
-        startMonth: startMonth ? parseInt(startMonth) : null,
-        startYear: startYear ? parseInt(startYear) : null,
-        endMonth: endMonth ? parseInt(endMonth) : null,
-        endYear: endYear ? parseInt(endYear) : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(recurringExpenses.id, expenseId));
+    // Se vengono passati month e year, gestisci l'override per quel mese
+    const overrideMonth = body.month;
+    const overrideYear = body.year;
+    
+    if (overrideMonth && overrideYear) {
+      // Cerca se esiste già un override per questo mese
+      const [existingOverride] = await db
+        .select()
+        .from(expenseMonthOverrides)
+        .where(and(
+          eq(expenseMonthOverrides.expenseId, expenseId),
+          eq(expenseMonthOverrides.month, parseInt(overrideMonth)),
+          eq(expenseMonthOverrides.year, parseInt(overrideYear))
+        ))
+        .limit(1);
+
+      if (existingOverride) {
+        // Aggiorna l'override esistente
+        await db
+          .update(expenseMonthOverrides)
+          .set({ isActive: isActive })
+          .where(eq(expenseMonthOverrides.id, existingOverride.id));
+      } else {
+        // Crea un nuovo override
+        await db.insert(expenseMonthOverrides).values({
+          id: uuid(),
+          expenseId,
+          month: parseInt(overrideMonth),
+          year: parseInt(overrideYear),
+          isActive,
+        });
+      }
+    } else {
+      // Comportamento originale: aggiorna i dati della spesa
+      await db
+        .update(recurringExpenses)
+        .set({
+          name,
+          amount: parseFloat(amount),
+          categoryId: categoryId || null,
+          frequencyType,
+          frequencyValue: frequencyValue || 1,
+          dayOfMonth: dayOfMonth || null,
+          isActive,
+          startMonth: startMonth ? parseInt(startMonth) : null,
+          startYear: startYear ? parseInt(startYear) : null,
+          endMonth: endMonth ? parseInt(endMonth) : null,
+          endYear: endYear ? parseInt(endYear) : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(recurringExpenses.id, expenseId));
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

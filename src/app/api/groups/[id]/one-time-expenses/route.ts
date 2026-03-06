@@ -77,7 +77,7 @@ export async function POST(
 
     const { id } = await params;
     const body = await req.json();
-    const { name, amount, categoryId, date, month, year, expenseId } = body;
+    const { name, amount, categoryId, date, month, year, recurringExpenseId } = body;
 
     if (!name || !amount || !date || !month || !year) {
       return NextResponse.json({ error: "Name, amount, date, month and year required" }, { status: 400 });
@@ -99,7 +99,7 @@ export async function POST(
     await db.insert(oneTimeExpenses).values({
       id: oneTimeExpenseId,
       groupId: id,
-      expenseId: expenseId || null,
+      expenseId: recurringExpenseId || null,
       categoryId: categoryId || null,
       name,
       amount: parseFloat(amount),
