@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useGroupStore } from "@/store/group";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { 
-  Home, Users, Receipt, BarChart3, ArrowLeft, 
-  TrendingUp, CheckCircle2, AlertCircle, Euro, ShoppingCart, Menu, X
+import {
+  Home, Users, Receipt, BarChart3, ArrowLeft,
+  TrendingUp, CheckCircle2, AlertCircle, Euro, ShoppingCart, Menu, X,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
 import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -43,19 +44,30 @@ export default function GroupPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const groupId = params.id as string;
-  
+
   const { members, setMembers, categories, setCategories, expenses, setExpenses } = useGroupStore();
   const [loading, setLoading] = useState(true);
   const [groupData, setGroupData] = useState<GroupData | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonthState, setCurrentMonthState] = useState(() => {
+    const monthParam = searchParams.get('month');
+    return monthParam ? parseInt(monthParam, 10) : new Date().getMonth() + 1;
+  });
+  const [currentYearState, setCurrentYearState] = useState(() => {
+    const yearParam = searchParams.get('year');
+    return yearParam ? parseInt(yearParam, 10) : new Date().getFullYear();
+  });
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [payments, setPayments] = useState<any[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Use local references for currentMonth and currentYear to avoid function recreations
+  const currentMonth = currentMonthState;
+  const currentYear = currentYearState;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -140,7 +152,7 @@ export default function GroupPage() {
 
   const deletePayment = async (paymentId: string) => {
     if (!confirm("Sei sicuro di voler annullare questo versamento?")) return;
-    
+
     try {
       const res = await fetch(`/api/groups/${groupId}/payments?paymentId=${paymentId}`, {
         method: "DELETE",
@@ -156,6 +168,16 @@ export default function GroupPage() {
     } catch (error) {
       toast.error("Errore");
     }
+  };
+
+  const handleMonthChange = (newMonth: number) => {
+    setCurrentMonthState(newMonth);
+    router.push(`/groups/${groupId}?month=${newMonth}&year=${currentYearState}`);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setCurrentYearState(newYear);
+    router.push(`/groups/${groupId}?month=${currentMonthState}&year=${newYear}`);
   };
 
   if (loading || status === "loading") {
@@ -315,6 +337,55 @@ export default function GroupPage() {
       )}
 
       <main className="max-w-6xl mx-auto p-6">
+        {/* Month/Year Selector */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+          <div className="flex items-center gap-2">
+            <ChevronLeft
+              className="w-5 h-5 cursor-pointer text-slate-600 hover:text-slate-900"
+              onClick={() => {
+                if (currentMonth === 1) {
+                  handleMonthChange(12);
+                  handleYearChange(currentYear - 1);
+                } else {
+                  handleMonthChange(currentMonth - 1);
+                }
+              }}
+            />
+            <select
+              value={currentMonth}
+              onChange={(e) => handleMonthChange(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-md bg-white font-medium"
+            >
+              {[
+                "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+              ].map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <select
+              value={currentYear}
+              onChange={(e) => handleYearChange(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-md bg-white font-medium w-28"
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <ChevronRight
+              className="w-5 h-5 cursor-pointer text-slate-600 hover:text-slate-900"
+              onClick={() => {
+                if (currentMonth === 12) {
+                  handleMonthChange(1);
+                  handleYearChange(currentYear + 1);
+                } else {
+                  handleMonthChange(currentMonth + 1);
+                }
+              }}
+            />
+          </div>
+        </div>
+
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList>
             <TabsTrigger value="overview">Panoramica</TabsTrigger>
