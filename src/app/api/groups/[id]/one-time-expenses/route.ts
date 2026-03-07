@@ -55,6 +55,8 @@ export async function GET(
 
     const result = expenses.map((expense) => ({
       ...expense,
+      date: expense.date?.toISOString ? expense.date.toISOString() : expense.date,
+      createdAt: expense.createdAt?.toISOString ? expense.createdAt.toISOString() : expense.createdAt,
       category: categories.find((c) => c.id === expense.categoryId),
     }));
 

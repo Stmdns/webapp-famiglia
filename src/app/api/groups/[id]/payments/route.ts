@@ -78,7 +78,10 @@ export async function GET(
         .reduce((sum, p) => sum + p.amountPaid, 0);
 
       return {
-        member,
+        member: {
+          ...member,
+          createdAt: member.createdAt?.toISOString ? member.createdAt.toISOString() : member.createdAt,
+        },
         calculated,
         paid,
         confirmed: paid >= calculated,
@@ -100,12 +103,23 @@ export async function GET(
       totalMonthly,
       memberQuotas,
       expensesByCategory,
-      expenses: expenses.map((e) => ({
-        ...e,
-        monthlyAmount: calculateMonthlyAmount(e),
-        category: categories.find((c) => c.id === e.categoryId),
+      expenses: expenses.map((e) => {
+        const category = categories.find((c) => c.id === e.categoryId);
+        return {
+          ...e,
+          createdAt: e.createdAt?.toISOString ? e.createdAt.toISOString() : e.createdAt,
+          updatedAt: e.updatedAt?.toISOString ? e.updatedAt.toISOString() : e.updatedAt,
+          monthlyAmount: calculateMonthlyAmount(e),
+          category: category ? {
+            ...category,
+            createdAt: category.createdAt?.toISOString ? category.createdAt.toISOString() : category.createdAt,
+          } : null,
+        };
+      }),
+      payments: expensePayments.map(p => ({
+        ...p,
+        confirmedAt: p.confirmedAt?.toISOString ? p.confirmedAt.toISOString() : p.confirmedAt,
       })),
-      payments: expensePayments,
     });
   } catch (error) {
     console.error("Error calculating:", error);

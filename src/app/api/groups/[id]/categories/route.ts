@@ -45,6 +45,12 @@ export async function GET(
       .from(expenseCategories)
       .where(eq(expenseCategories.groupId, id));
 
+    // Serializza le date
+    const serializedCategories = categories.map(cat => ({
+      ...cat,
+      createdAt: cat.createdAt?.toISOString ? cat.createdAt.toISOString() : cat.createdAt,
+    }));
+
     if (categories.length === 0) {
       const now = new Date();
       const insertedCategories = [];
@@ -69,7 +75,7 @@ export async function GET(
       return NextResponse.json(insertedCategories);
     }
 
-    return NextResponse.json(categories);
+    return NextResponse.json(serializedCategories);
   } catch (error) {
     console.error("Error fetching categories:", error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

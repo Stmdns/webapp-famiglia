@@ -34,7 +34,13 @@ export async function GET(
       .from(groupMembers)
       .where(eq(groupMembers.groupId, id));
 
-    return NextResponse.json(members);
+    // Serializza le date
+    const serializedMembers = members.map(m => ({
+      ...m,
+      createdAt: m.createdAt?.toISOString ? m.createdAt.toISOString() : m.createdAt,
+    }));
+
+    return NextResponse.json(serializedMembers);
   } catch (error) {
     console.error("Error fetching members:", error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

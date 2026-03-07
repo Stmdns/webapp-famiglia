@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { db } from "@/db";
-import { recurringExpenses, groups, groupMembers, expenseCategories, expenseMonthOverrides } from "@/db/schema";
+import { recurringExpenses, groups, groupMembers, expenseCategories, expenseMonthOverrides, oneTimeExpenses } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { authOptions } from "@/lib/auth";
@@ -107,6 +107,25 @@ export async function GET(
       expenses = [...expenses, ...hiddenExpenses];
     }
 
+    // Recupera le spese singole collegate (one-time expenses) per il mese specificato
+    const oneTimeExpensesData = await db
+      .select()
+      .from(oneTimeExpenses)
+      .where(and(
+        eq(oneTimeExpenses.groupId, id),
+        eq(oneTimeExpenses.month, month),
+        eq(oneTimeExpenses.year, year)
+      ));
+
+    // Raggruppa per expenseId e somma gli amount per calcolare il totale pagato
+    const paidAmountsMap = new Map<string, number>();
+    oneTimeExpensesData.forEach(ote => {
+      if (ote.expenseId) {
+        const current = paidAmountsMap.get(ote.expenseId) || 0;
+        paidAmountsMap.set(ote.expenseId, current + ote.amount);
+      }
+    });
+
     const result = expenses.map((expense) => {
       // Determina lo stato per questo mese
       let isActiveForMonth: boolean;
@@ -115,12 +134,18 @@ export async function GET(
       } else {
         isActiveForMonth = expense.isActive;
       }
-      
+
+      // Calcola il totale pagato dalle spese singole collegate
+      const paidAmount = paidAmountsMap.get(expense.id) || 0;
+
       return {
         ...expense,
+        createdAt: expense.createdAt?.toISOString ? expense.createdAt.toISOString() : expense.createdAt,
+        updatedAt: expense.updatedAt?.toISOString ? expense.updatedAt.toISOString() : expense.updatedAt,
         category: categories.find((c) => c.id === expense.categoryId),
         isActiveForMonth,
         isHidden: !isActiveForMonth,
+        paidAmount,
       };
     });
 

@@ -80,9 +80,12 @@ export async function GET(
       const expense = expenses.find((e) => e.id === payment.expenseId);
       return {
         ...payment,
+        paidAt: payment.paidAt?.toISOString ? payment.paidAt.toISOString() : payment.paidAt,
         expense: expense ? {
           ...expense,
-          isActiveForMonth: expense ? isExpenseActiveForMonth(expense) : true
+          createdAt: expense.createdAt?.toISOString ? expense.createdAt.toISOString() : expense.createdAt,
+          updatedAt: expense.updatedAt?.toISOString ? expense.updatedAt.toISOString() : expense.updatedAt,
+          isActiveForMonth: isExpenseActiveForMonth(expense)
         } : null,
       };
     });

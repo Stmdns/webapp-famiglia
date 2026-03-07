@@ -19,7 +19,17 @@ export async function GET() {
       .innerJoin(groupMembers, eq(groups.id, groupMembers.groupId))
       .where(eq(groupMembers.userId, session.user.id));
 
-    return NextResponse.json(userGroups.map((g) => g.groups));
+    // Serializza le date
+    const serializedGroups = userGroups.map((g) => {
+      const group = g.groups;
+      return {
+        ...group,
+        createdAt: group.createdAt?.toISOString ? group.createdAt.toISOString() : group.createdAt,
+        updatedAt: group.updatedAt?.toISOString ? group.updatedAt.toISOString() : group.updatedAt,
+      };
+    });
+
+    return NextResponse.json(serializedGroups);
   } catch (error) {
     console.error("Error fetching groups:", error);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
