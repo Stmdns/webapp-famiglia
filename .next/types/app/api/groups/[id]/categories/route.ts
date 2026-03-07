@@ -1,4 +1,4 @@
-// File: C:\Users\denis\famiglia-budget\src\app\api\groups\[id]\categories\route.ts
+// File: /home/stmdns/.openclaw/workspace/webapp-famiglia/src/app/api/groups/[id]/categories/route.ts
 import * as entry from '../../../../../../../src/app/api/groups/[id]/categories/route.js'
 import type { NextRequest } from 'next/server.js'
 

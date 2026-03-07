@@ -1,13 +1,4 @@
 /** @type {import('next').NextConfig} */
-const withPWA = require("@ducanh2912/next-pwa").default({
-  dest: "public",
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
-  reloadOnOnline: true,
-  swcMinify: true,
-  disable: false,
-});
-
 const nextConfig = {
   images: {
     remotePatterns: [
@@ -17,6 +8,8 @@ const nextConfig = {
       },
     ],
   },
+  // Allow Vercel to use Node.js server for API routes
+  // No static export - we need SSR for NextAuth
 }
 
-module.exports = withPWA(nextConfig)
+module.exports = nextConfig

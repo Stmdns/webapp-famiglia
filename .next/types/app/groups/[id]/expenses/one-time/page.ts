@@ -1,4 +1,4 @@
-// File: C:\Users\denis\famiglia-budget\src\app\groups\[id]\expenses\one-time\page.tsx
+// File: /home/stmdns/.openclaw/workspace/webapp-famiglia/src/app/groups/[id]/expenses/one-time/page.tsx
 import * as entry from '../../../../../../../src/app/groups/[id]/expenses/one-time/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

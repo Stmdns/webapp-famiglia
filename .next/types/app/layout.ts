@@ -1,4 +1,4 @@
-// File: C:\Users\denis\famiglia-budget\src\app\layout.tsx
+// File: /home/stmdns/.openclaw/workspace/webapp-famiglia/src/app/layout.tsx
 import * as entry from '../../../src/app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

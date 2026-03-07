@@ -683,46 +683,67 @@ export default function OneTimeExpensesPage() {
                     className={`flex items-center justify-between p-2 rounded-lg ${expense.isPaid ? 'bg-green-50' : 'bg-slate-50'}`}
                   >
                     {editingId === expense.id ? (
-                      <div className="flex items-center gap-3 w-full">
-                        <Switch
-                          checked={expense.isPaid}
-                          onCheckedChange={() => togglePaid(expense.id, expense.isPaid)}
-                        />
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2">
-                          <Input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            placeholder="Descrizione"
+                      <div className="space-y-3">
+                        <div className="flex flex-col md:flex-row md:items-center gap-3">
+                          <Switch
+                            checked={expense.isPaid}
+                            onCheckedChange={() => togglePaid(expense.id, expense.isPaid)}
+                            className="shrink-0"
                           />
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={editAmount}
-                            onChange={(e) => setEditAmount(e.target.value)}
-                            placeholder="Importo"
-                          />
-                          <Select value={editCategory} onValueChange={setEditCategory}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Categoria" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {categories.map((cat) => (
-                                <SelectItem key={cat.id} value={cat.id}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
-                                    {cat.name}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="date"
-                            value={editDate}
-                            onChange={(e) => setEditDate(e.target.value)}
-                          />
+                          <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <Input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              placeholder="Descrizione"
+                            />
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(e.target.value)}
+                              placeholder="Importo"
+                            />
+                            <Select value={editCategory} onValueChange={setEditCategory}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Categoria" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map((cat) => (
+                                  <SelectItem key={cat.id} value={cat.id}>
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
+                                      {cat.name}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="date"
+                              value={editDate}
+                              onChange={(e) => setEditDate(e.target.value)}
+                            />
+                          </div>
+                          <div className="hidden md:flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-green-500 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => saveEdit(expense.id)}
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={cancelEdit}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
-                        
+
                         {/* Dropdown spesa ricorrente */}
                         {(() => {
                           const speseRicorrentiCategoria = recurringExpenses.filter(
@@ -730,10 +751,10 @@ export default function OneTimeExpensesPage() {
                           );
                           if (speseRicorrentiCategoria.length > 0) {
                             return (
-                              <div className="col-span-4 space-y-2">
+                              <div className="space-y-2">
                                 <Label>Collega a spesa ricorrente</Label>
-                                <Select 
-                                  value={selectedRecurringExpense || "none"} 
+                                <Select
+                                  value={selectedRecurringExpense || "none"}
                                   onValueChange={(v) => setSelectedRecurringExpense(v === "none" ? null : v)}
                                 >
                                   <SelectTrigger>
@@ -763,8 +784,8 @@ export default function OneTimeExpensesPage() {
                                   </SelectContent>
                                 </Select>
                                 <p className="text-xs text-slate-500">
-                                  {speseRicorrentiCategoria.length === 1 
-                                    ? "Un'unica spesa ricorrente trovata - allegata automaticamente" 
+                                  {speseRicorrentiCategoria.length === 1
+                                    ? "Un'unica spesa ricorrente trovata - allegata automaticamente"
                                     : "Seleziona a quale spesa ricorrente allegare questa spesa"
                                   }
                                 </p>
@@ -773,8 +794,8 @@ export default function OneTimeExpensesPage() {
                           }
                           return null;
                         })()}
-                        
-                        <div className="col-span-4 flex items-center gap-1">
+
+                        <div className="flex justify-end gap-1 md:hidden">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -800,14 +821,12 @@ export default function OneTimeExpensesPage() {
                             checked={expense.isPaid}
                             onCheckedChange={() => togglePaid(expense.id, expense.isPaid)}
                           />
-                          <Link href={`/groups/${groupId}/expenses/one-time/${expense.id}`} className="hover:underline">
-                            <div>
-                              <p className="font-medium">{expense.name}</p>
-                              <p className="text-xs text-slate-500">
-                                {new Date(expense.date).toLocaleDateString("it-IT")}
-                              </p>
-                            </div>
-                          </Link>
+                          <div>
+                            <p className="font-medium">{expense.name}</p>
+                            <p className="text-xs text-slate-500">
+                              {new Date(expense.date).toLocaleDateString("it-IT")}
+                            </p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="text-right">

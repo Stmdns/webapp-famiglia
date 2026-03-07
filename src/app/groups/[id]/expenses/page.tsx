@@ -140,7 +140,13 @@ export default function ExpensesPage() {
     }
   };
 
-  const getExpensePaidAmount = (expenseId: string) => {
+  const getExpensePaidAmount = (expenseId: string): number => {
+    // Prima cerca nel paidAmount dell'expense (calcolato dalle oneTimeExpenses)
+    const expense = expenses.find(e => e.id === expenseId);
+    if (expense?.paidAmount !== undefined) {
+      return expense.paidAmount;
+    }
+    // Fallback al vecchio sistema expensePayments
     const payment = expensePayments.find(p => p.expenseId === expenseId);
     return payment?.amount || 0;
   };
@@ -806,60 +812,81 @@ export default function ExpensesPage() {
               <Card key={expense.id} className={`transition-opacity ${!isExpenseActive && 'opacity-50'}`}>
                 <CardContent className="py-4">
                   {editingId === expense.id ? (
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        checked={expense.isActiveForMonth ?? expense.isActive}
-                        onCheckedChange={() => toggleExpense(expense.id, expense.isActiveForMonth ?? expense.isActive)}
-                      />
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-2">
-                        <Input
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          placeholder="Nome"
+                    <div className="space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-center gap-3">
+                        <Switch
+                          checked={expense.isActiveForMonth ?? expense.isActive}
+                          onCheckedChange={() => toggleExpense(expense.id, expense.isActiveForMonth ?? expense.isActive)}
+                          className="shrink-0"
                         />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
-                          placeholder="Importo"
-                        />
-                        <Select value={editCategory} onValueChange={setEditCategory}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Categoria" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat.id} value={cat.id}>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
-                                  {cat.name}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={editFrequency} onValueChange={setEditFrequency}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {FREQUENCIES.map((f) => (
-                              <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {(editFrequency === "days" || editFrequency === "months") && (
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-2">
+                          <Input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Nome"
+                          />
                           <Input
                             type="number"
-                            min="1"
-                            value={editFrequencyValue}
-                            onChange={(e) => setEditFrequencyValue(parseInt(e.target.value))}
-                            placeholder="ogni"
+                            step="0.01"
+                            value={editAmount}
+                            onChange={(e) => setEditAmount(e.target.value)}
+                            placeholder="Importo"
                           />
-                        )}
+                          <Select value={editCategory} onValueChange={setEditCategory}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Categoria" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {categories.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
+                                    {cat.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select value={editFrequency} onValueChange={setEditFrequency}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FREQUENCIES.map((f) => (
+                                <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {(editFrequency === "days" || editFrequency === "months") && (
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editFrequencyValue}
+                              onChange={(e) => setEditFrequencyValue(parseInt(e.target.value))}
+                              placeholder="ogni"
+                            />
+                          )}
+                        </div>
+                        <div className="hidden md:flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-green-500 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => saveEdit(expense.id)}
+                          >
+                            <Check className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={cancelEdit}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex justify-end gap-1 md:hidden">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -905,7 +932,7 @@ export default function ExpensesPage() {
                         <div className="text-right">
                           <p className="font-bold">€ {expectedAmount.toFixed(2)}/mese</p>
                           <p className="text-xs text-slate-500">
-                            {paidAmount > 0 ? `Pagato: €${paidAmount.toFixed(2)}` : 'Non pagato'}
+                            {paidAmount > 0 ? `€${paidAmount.toFixed(0)}/€${expectedAmount.toFixed(0)}` : 'Non pagato'}
                           </p>
                         </div>
                         <Button 

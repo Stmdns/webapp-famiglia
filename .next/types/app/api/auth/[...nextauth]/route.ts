@@ -1,4 +1,4 @@
-// File: C:\Users\denis\famiglia-budget\src\app\api\auth\[...nextauth]\route.ts
+// File: /home/stmdns/.openclaw/workspace/webapp-famiglia/src/app/api/auth/[...nextauth]/route.ts
 import * as entry from '../../../../../../src/app/api/auth/[...nextauth]/route.js'
 import type { NextRequest } from 'next/server.js'
 
