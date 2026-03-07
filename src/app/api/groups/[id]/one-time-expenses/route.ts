@@ -129,7 +129,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await req.json();
-    const { expenseId, name, amount, categoryId, date, month, year, isPaid, receiptText } = body;
+    const { expenseId, name, amount, categoryId, date, month, year, isPaid, receiptText, recurringExpenseId } = body;
 
     const [group] = await db
       .select()
@@ -150,6 +150,11 @@ export async function PUT(
       year: parseInt(year),
       isPaid: isPaid !== undefined ? isPaid : false,
     };
+
+    // Aggiorna la relazione con la spesa ricorrente se fornita
+    if (recurringExpenseId !== undefined) {
+      updateData.expenseId = recurringExpenseId || null;
+    }
 
     if (receiptText !== undefined) {
       updateData.receiptText = receiptText;

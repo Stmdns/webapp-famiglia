@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,9 +103,13 @@ export default function ExpensesPage() {
 
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
-
-  const [currentMonthState, setCurrentMonthState] = useState(currentMonth);
-  const [currentYearState, setCurrentYearState] = useState(currentYear);
+  const searchParams = useSearchParams();
+  const [currentMonthState, setCurrentMonthState] = useState(
+    parseInt(searchParams.get('month') || String(currentMonth))
+  );
+  const [currentYearState, setCurrentYearState] = useState(
+    parseInt(searchParams.get('year') || String(currentYear))
+  );
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -150,6 +154,16 @@ export default function ExpensesPage() {
       case "months": return amount / value;
       default: return amount;
     }
+  };
+
+  const handleMonthChange = (newMonth: number) => {
+    setCurrentMonthState(newMonth);
+    router.push(`/groups/${groupId}/expenses?month=${newMonth}&year=${currentYearState}`);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setCurrentYearState(newYear);
+    router.push(`/groups/${groupId}/expenses?month=${currentMonthState}&year=${newYear}`);
   };
 
   const openPaymentDialog = (expenseId: string, expectedAmount: number, paidAmount: number) => {
@@ -532,16 +546,16 @@ export default function ExpensesPage() {
           
           <div className="flex items-center gap-1">
             {/* Month navigation */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-8 w-8"
               onClick={() => {
                 if (currentMonthState === 1) {
-                  setCurrentMonthState(12);
-                  setCurrentYearState(currentYearState - 1);
+                  handleMonthChange(12);
+                  handleYearChange(currentYearState - 1);
                 } else {
-                  setCurrentMonthState(currentMonthState - 1);
+                  handleMonthChange(currentMonthState - 1);
                 }
               }}
             >
@@ -550,16 +564,16 @@ export default function ExpensesPage() {
             <span className="text-sm font-medium min-w-[50px] sm:min-w-[60px] text-center">
               {['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][currentMonthState-1]} {currentYearState}
             </span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-8 w-8"
               onClick={() => {
                 if (currentMonthState === 12) {
-                  setCurrentMonthState(1);
-                  setCurrentYearState(currentYearState + 1);
+                  handleMonthChange(1);
+                  handleYearChange(currentYearState + 1);
                 } else {
-                  setCurrentMonthState(currentMonthState + 1);
+                  handleMonthChange(currentMonthState + 1);
                 }
               }}
             >

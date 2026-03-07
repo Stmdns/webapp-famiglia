@@ -233,13 +233,13 @@ export default function GroupPage() {
                 Membri
               </Button>
             </Link>
-            <Link href={`/groups/${groupId}/expenses`}>
+            <Link href={`/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`}>
               <Button variant="outline" size="sm">
                 <Receipt className="w-4 h-4 mr-2" />
                 Spese Fisse
               </Button>
             </Link>
-            <Link href={`/groups/${groupId}/expenses/one-time`}>
+            <Link href={`/groups/${groupId}/expenses/one-time?month=${currentMonth}&year=${currentYear}`}>
               <Button variant="outline" size="sm">
                 <ShoppingCart className="w-4 h-4 mr-2" />
                 Spese Singole
@@ -285,16 +285,16 @@ export default function GroupPage() {
                 <Users className="w-5 h-5" />
                 Membri
               </Link>
-              <Link 
-                href={`/groups/${groupId}/expenses`} 
+              <Link
+                href={`/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`}
                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
                 onClick={() => setSidebarOpen(false)}
               >
                 <Receipt className="w-5 h-5" />
                 Spese Fisse
               </Link>
-              <Link 
-                href={`/groups/${groupId}/expenses/one-time`} 
+              <Link
+                href={`/groups/${groupId}/expenses/one-time?month=${currentMonth}&year=${currentYear}`}
                 className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
                 onClick={() => setSidebarOpen(false)}
               >
