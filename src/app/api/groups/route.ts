@@ -66,7 +66,7 @@ export async function POST(req: Request) {
       groupId,
       userId: session.user.id,
       name: session.user.name || "Me",
-      quotaPercent: 100,
+      quotaPercent: 0,
       createdAt: now,
     });
 

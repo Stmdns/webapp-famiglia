@@ -1,0 +1,1 @@
+Risolvi tutti i problemi elencati in opencode-task.md. Leggi il file, analizza il codice della webapp Famiglia Budget, applica i fix necessari uno per uno, e verifica che non ci siano errori TypeScript. Mostra un riassunto di tutte le modifiche fatte.

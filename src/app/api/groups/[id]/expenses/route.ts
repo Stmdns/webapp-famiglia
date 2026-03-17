@@ -11,6 +11,9 @@ function isExpenseInDateRange(
   month: number,
   year: number
 ): boolean {
+  // TODO: Implementare logica frequenza (weekly, monthly, yearly, days, months)
+  // per mostrare spese solo nei mesi specifici in base alla frequenza
+  
   // Controlla se è nel periodo di validità
   // Se startMonth/startYear sono definiti, la spesa inizia da quel mese
   if (expense.startMonth !== null && expense.startYear !== null) {

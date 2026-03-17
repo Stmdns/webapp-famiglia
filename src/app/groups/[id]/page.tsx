@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useGroupStore } from "@/store/group";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,10 @@ export default function GroupPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const groupId = params.id as string;
+  if (!groupId) {
+    router.push("/dashboard");
+    return;
+  }
 
   const { members, setMembers, categories, setCategories, expenses, setExpenses } = useGroupStore();
   const [loading, setLoading] = useState(true);
@@ -65,9 +69,19 @@ export default function GroupPage() {
   const [payments, setPayments] = useState<any[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Use local references for currentMonth and currentYear to avoid function recreations
   const currentMonth = currentMonthState;
   const currentYear = currentYearState;
+
+  const monthRef = useRef(currentMonthState);
+  const yearRef = useRef(currentYearState);
+
+  useEffect(() => {
+    monthRef.current = currentMonthState;
+  }, [currentMonthState]);
+
+  useEffect(() => {
+    yearRef.current = currentYearState;
+  }, [currentYearState]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -172,12 +186,12 @@ export default function GroupPage() {
 
   const handleMonthChange = (newMonth: number) => {
     setCurrentMonthState(newMonth);
-    router.push(`/groups/${groupId}?month=${newMonth}&year=${currentYearState}`);
+    router.push(`/groups/${groupId}?month=${newMonth}&year=${yearRef.current}`);
   };
 
   const handleYearChange = (newYear: number) => {
     setCurrentYearState(newYear);
-    router.push(`/groups/${groupId}?month=${currentMonthState}&year=${newYear}`);
+    router.push(`/groups/${groupId}?month=${monthRef.current}&year=${newYear}`);
   };
 
   if (loading || status === "loading") {

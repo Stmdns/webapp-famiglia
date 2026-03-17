@@ -1,10 +1,28 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { db } from "@/db";
-import { payments, recurringExpenses, groupMembers, groups, expenseCategories } from "@/db/schema";
+import { payments, recurringExpenses, groupMembers, groups, expenseCategories, expenseMonthOverrides } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { authOptions } from "@/lib/auth";
+
+function isExpenseInDateRange(
+  expense: { startMonth: number | null; startYear: number | null; endMonth: number | null; endYear: number | null },
+  month: number,
+  year: number
+): boolean {
+  if (expense.startMonth !== null && expense.startYear !== null) {
+    if (year < expense.startYear || (year === expense.startYear && month < expense.startMonth)) {
+      return false;
+    }
+  }
+  if (expense.endMonth !== null && expense.endYear !== null) {
+    if (year > expense.endYear || (year === expense.endYear && month > expense.endMonth)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 function calculateMonthlyAmount(expense: { amount: number; frequencyType: string; frequencyValue: number }) {
   switch (expense.frequencyType) {
@@ -54,10 +72,30 @@ export async function GET(
       .from(groupMembers)
       .where(eq(groupMembers.groupId, id));
 
-    const expenses = await db
+    const allExpenses = await db
       .select()
       .from(recurringExpenses)
-      .where(and(eq(recurringExpenses.groupId, id), eq(recurringExpenses.isActive, true)));
+      .where(eq(recurringExpenses.groupId, id));
+
+    const overrides = await db
+      .select()
+      .from(expenseMonthOverrides)
+      .where(and(
+        eq(expenseMonthOverrides.month, month),
+        eq(expenseMonthOverrides.year, year)
+      ));
+
+    const overrideMap = new Map(overrides.map(o => [o.expenseId, o.isActive]));
+
+    const expenses = allExpenses.filter(e => {
+      if (!isExpenseInDateRange(e, month, year)) return false;
+      
+      if (overrideMap.has(e.id)) {
+        return overrideMap.get(e.id);
+      }
+      
+      return e.isActive;
+    });
 
     const categories = await db
       .select()

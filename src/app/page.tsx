@@ -18,6 +18,25 @@ export default function HomePage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
+  const getValidRedirectUrl = async () => {
+    const lastGroupId = localStorage.getItem("lastGroupId");
+    if (!lastGroupId) return "/dashboard";
+
+    try {
+      const res = await fetch("/api/groups");
+      if (res.ok) {
+        const groups = await res.json();
+        const groupExists = groups.some((g: any) => g.id === lastGroupId);
+        if (groupExists) {
+          return `/groups/${lastGroupId}`;
+        }
+      }
+    } catch (error) {
+      console.error("Error checking group:", error);
+    }
+    return "/dashboard";
+  };
+
   const handleCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -45,8 +64,8 @@ export default function HomePage() {
       if (result?.error) {
         toast.error(result.error);
       } else {
-        const lastGroup = localStorage.getItem("lastGroupId");
-        router.push(lastGroup ? `/groups/${lastGroup}` : "/dashboard");
+        const redirectUrl = await getValidRedirectUrl();
+        router.push(redirectUrl);
       }
     } catch (error) {
       toast.error("Errore di connessione");
@@ -69,15 +88,14 @@ export default function HomePage() {
       toast.error(result.error);
       setLoading(false);
     } else {
-      const lastGroup = localStorage.getItem("lastGroupId");
-      router.push(lastGroup ? `/groups/${lastGroup}` : "/dashboard");
+      const redirectUrl = await getValidRedirectUrl();
+      router.push(redirectUrl);
     }
   };
 
-  const handleGoogleLogin = () => {
-    const lastGroup = localStorage.getItem("lastGroupId");
-    const callbackUrl = lastGroup ? `/groups/${lastGroup}` : "/dashboard";
-    signIn("google", { callbackUrl });
+  const handleGoogleLogin = async () => {
+    const redirectUrl = await getValidRedirectUrl();
+    signIn("google", { callbackUrl: redirectUrl });
   };
 
   return (
