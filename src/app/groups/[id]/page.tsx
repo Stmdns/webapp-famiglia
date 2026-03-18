@@ -2,21 +2,26 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useGroupStore } from "@/store/group";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import {
-  Home, Users, Receipt, Settings, CheckCircle2,
-  ChevronLeft, ChevronRight, Plus, History, Trash2, X
+  Home, Users, Receipt, BarChart3, ArrowLeft,
+  TrendingUp, CheckCircle2, AlertCircle, Euro, ShoppingCart, Menu, X,
+  ChevronLeft, ChevronRight
 } from "lucide-react";
 import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
+import { ShareLinkSection } from "@/components/ui/share-link-section";
 
 interface MemberQuota {
   member: {
@@ -42,17 +47,21 @@ export default function GroupPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const groupId = params.id as string;
+  if (!groupId) {
+    router.push("/dashboard");
+    return;
+  }
 
-  const { members, setMembers, expenses, setExpenses } = useGroupStore();
+  const { members, setMembers, categories, setCategories, expenses, setExpenses } = useGroupStore();
   const [loading, setLoading] = useState(true);
   const [groupData, setGroupData] = useState<GroupData | null>(null);
-  const [groupInfo, setGroupInfo] = useState<{ id: string; name: string } | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(() => {
-    const monthParam = searchParams.get("month");
+  const [groupInfo, setGroupInfo] = useState<{ id: string; name: string; ownerId: string; viewToken: string | null } | null>(null);
+  const [currentMonthState, setCurrentMonthState] = useState(() => {
+    const monthParam = searchParams.get('month');
     return monthParam ? parseInt(monthParam, 10) : new Date().getMonth() + 1;
   });
-  const [currentYear, setCurrentYear] = useState(() => {
-    const yearParam = searchParams.get("year");
+  const [currentYearState, setCurrentYearState] = useState(() => {
+    const yearParam = searchParams.get('year');
     return yearParam ? parseInt(yearParam, 10) : new Date().getFullYear();
   });
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -60,7 +69,21 @@ export default function GroupPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [payments, setPayments] = useState<any[]>([]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const currentMonth = currentMonthState;
+  const currentYear = currentYearState;
+
+  const monthRef = useRef(currentMonthState);
+  const yearRef = useRef(currentYearState);
+
+  useEffect(() => {
+    monthRef.current = currentMonthState;
+  }, [currentMonthState]);
+
+  useEffect(() => {
+    yearRef.current = currentYearState;
+  }, [currentYearState]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -72,15 +95,17 @@ export default function GroupPage() {
 
   const fetchData = async () => {
     try {
-      const [groupInfoRes, membersRes, expensesRes, dataRes] = await Promise.all([
+      const [groupInfoRes, membersRes, categoriesRes, expensesRes, dataRes] = await Promise.all([
         fetch(`/api/groups/${groupId}`),
         fetch(`/api/groups/${groupId}/members`),
+        fetch(`/api/groups/${groupId}/categories`),
         fetch(`/api/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`),
         fetch(`/api/groups/${groupId}/payments?month=${currentMonth}&year=${currentYear}`),
       ]);
 
       if (groupInfoRes.ok) setGroupInfo(await groupInfoRes.json());
       if (membersRes.ok) setMembers(await membersRes.json());
+      if (categoriesRes.ok) setCategories(await categoriesRes.json());
       if (expensesRes.ok) setExpenses(await expensesRes.json());
       if (dataRes.ok) setGroupData(await dataRes.json());
     } catch (error) {
@@ -89,6 +114,16 @@ export default function GroupPage() {
       setLoading(false);
     }
   };
+
+  const categoryData = groupData 
+    ? Object.entries(groupData.expensesByCategory).map(([name, data]) => ({
+        name,
+        value: Math.round(data.total * 100) / 100,
+        color: data.color,
+      }))
+    : [];
+
+  const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#6b7280'];
 
   const registerPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,7 +150,7 @@ export default function GroupPage() {
       } else {
         toast.error("Errore nel versamento");
       }
-    } catch {
+    } catch (error) {
       toast.error("Errore");
     }
   };
@@ -134,7 +169,7 @@ export default function GroupPage() {
   };
 
   const deletePayment = async (paymentId: string) => {
-    if (!confirm("Annullare questo versamento?")) return;
+    if (!confirm("Sei sicuro di voler annullare questo versamento?")) return;
 
     try {
       const res = await fetch(`/api/groups/${groupId}/payments?paymentId=${paymentId}`, {
@@ -146,70 +181,66 @@ export default function GroupPage() {
         fetchPayments();
         fetchData();
       } else {
-        toast.error("Errore");
+        toast.error("Errore nell'annullamento");
       }
-    } catch {
+    } catch (error) {
       toast.error("Errore");
     }
   };
 
-  const handleMonthChange = (delta: number) => {
-    let newMonth = currentMonth + delta;
-    let newYear = currentYear;
-    if (newMonth > 12) {
-      newMonth = 1;
-      newYear++;
-    } else if (newMonth < 1) {
-      newMonth = 12;
-      newYear--;
-    }
-    setCurrentMonth(newMonth);
-    setCurrentYear(newYear);
-    router.push(`/groups/${groupId}?month=${newMonth}&year=${newYear}`);
+  const handleMonthChange = (newMonth: number) => {
+    setCurrentMonthState(newMonth);
+    router.push(`/groups/${groupId}?month=${newMonth}&year=${yearRef.current}`);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setCurrentYearState(newYear);
+    router.push(`/groups/${groupId}?month=${monthRef.current}&year=${newYear}`);
   };
 
   if (loading || status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse text-slate-400">Caricamento...</div>
       </div>
     );
   }
 
-  const months = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
-  const totalPaid = groupData?.memberQuotas.reduce((sum, m) => sum + m.paid, 0) ?? 0;
-  const totalDue = groupData?.totalMonthly ?? 0;
-  const remaining = totalDue - totalPaid;
-
-  const sortedExpenses = [...(groupData?.expenses ?? [])].sort((a, b) => 
-    (b.monthlyAmount ?? 0) - (a.monthlyAmount ?? 0)
-  );
+  const months = [
+    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base">Storico - {months[currentMonth - 1]} {currentYear}</DialogTitle>
+            <DialogTitle>Storico versamenti - {months[currentMonth - 1]} {currentYear}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="space-y-2 mt-4 max-h-64 overflow-y-auto">
             {payments.length === 0 ? (
-              <p className="text-center text-slate-500 py-4 text-sm">Nessun versamento</p>
+              <p className="text-center text-slate-500 py-4">Nessun versamento registrato</p>
             ) : (
               payments.map((payment) => {
-                const member = members.find((m) => m.id === payment.memberId);
+                const member = members.find(m => m.id === payment.memberId);
                 return (
-                  <div key={payment.id} className="flex items-center justify-between p-2 border rounded-lg">
+                  <div key={payment.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
-                      <p className="font-medium text-sm">{member?.name || "Membro"}</p>
+                      <p className="font-medium">{member?.name || "Membro"}</p>
                       <p className="text-xs text-slate-500">
                         {new Date(payment.createdAt).toLocaleDateString("it-IT")}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm">€{payment.amountPaid.toFixed(2)}</span>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => deletePayment(payment.id)}>
-                        <Trash2 className="w-3 h-3" />
+                      <span className="font-bold">€ {payment.amountPaid.toFixed(2)}</span>
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => deletePayment(payment.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
@@ -219,171 +250,385 @@ export default function GroupPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-base">Registra versamento</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={registerPayment} className="space-y-3 mt-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Membro</Label>
-              <select
-                className="w-full p-2 border rounded-md text-sm"
-                value={selectedMemberId}
-                onChange={(e) => setSelectedMemberId(e.target.value)}
-                required
-              >
-                <option value="">Seleziona</option>
-                {groupData?.memberQuotas.map((mq) => (
-                  <option key={mq.member.id} value={mq.member.id}>
-                    {mq.member.name} (€{mq.calculated.toFixed(2)})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Importo (€)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full">Registra</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <header className="bg-white border-b border-slate-200 px-3 py-2 sticky top-0 z-10">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
+      <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/dashboard")}>
-              <ChevronLeft className="w-4 h-4" />
+            <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
+              <ArrowLeft className="w-4 h-4" />
             </Button>
-            <h1 className="font-semibold text-slate-900 text-sm">{groupInfo?.name || "Gruppo"}</h1>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Home className="w-4 h-4 text-white" />
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-bold text-slate-900">Dashboard</h1>
+                <p className="text-xs text-slate-500">Mese {currentMonth}/{currentYear}</p>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-slate-100 rounded">
-              <ChevronLeft className="w-4 h-4 text-slate-600" />
-            </button>
-            <span className="text-xs font-medium min-w-[60px] text-center">
-              {months[currentMonth - 1]} {currentYear}
-            </span>
-            <button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-slate-100 rounded">
-              <ChevronRight className="w-4 h-4 text-slate-600" />
-            </button>
-            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 ml-1">
-                  <Settings className="w-4 h-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-sm">
-                <DialogHeader>
-                  <DialogTitle className="text-base">Impostazioni</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-2">
-                  <Link href={`/groups/${groupId}/members`} onClick={() => setSettingsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start text-sm">
-                      <Users className="w-4 h-4 mr-2" /> Membri
-                    </Button>
-                  </Link>
-                  <Link href={`/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`} onClick={() => setSettingsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start text-sm">
-                      <Receipt className="w-4 h-4 mr-2" /> Spese Fisse
-                    </Button>
-                  </Link>
-                  <Link href={`/groups/${groupId}/reports`} onClick={() => setSettingsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start text-sm">
-                      <Home className="w-4 h-4 mr-2" /> Report
-                    </Button>
-                  </Link>
-                </div>
-              </DialogContent>
-            </Dialog>
+          <div className="hidden md:flex items-center gap-2">
+            <Link href={`/groups/${groupId}/members`}>
+              <Button variant="outline" size="sm">
+                <Users className="w-4 h-4 mr-2" />
+                Membri
+              </Button>
+            </Link>
+            <Link href={`/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`}>
+              <Button variant="outline" size="sm">
+                <Receipt className="w-4 h-4 mr-2" />
+                Spese Fisse
+              </Button>
+            </Link>
+            <Link href={`/groups/${groupId}/expenses/one-time?month=${currentMonth}&year=${currentYear}`}>
+              <Button variant="outline" size="sm">
+                <ShoppingCart className="w-4 h-4 mr-2" />
+                Spese Singole
+              </Button>
+            </Link>
+            <Link href={`/groups/${groupId}/reports`}>
+              <Button variant="outline" size="sm">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Report
+              </Button>
+            </Link>
           </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="md:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto p-3 space-y-3">
-        <div className="grid grid-cols-3 gap-2">
-          <Card className="p-2 text-center bg-slate-900 text-white">
-            <p className="text-[10px] text-slate-400 uppercase">Totale</p>
-            <p className="text-lg font-bold">€{totalDue.toFixed(0)}</p>
-          </Card>
-          <Card className="p-2 text-center bg-red-50 border-red-100">
-            <p className="text-[10px] text-red-500 uppercase">Da versare</p>
-            <p className="text-lg font-bold text-red-600">€{Math.max(0, remaining).toFixed(0)}</p>
-          </Card>
-          <Card className="p-2 text-center bg-green-50 border-green-100">
-            <p className="text-[10px] text-green-600 uppercase">Versato</p>
-            <p className="text-lg font-bold text-green-600">€{totalPaid.toFixed(0)}</p>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase">Membri</h2>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={fetchPayments}>
-                <History className="w-3 h-3" />
+      {sidebarOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="fixed top-0 right-0 h-full w-64 bg-white z-50 shadow-xl md:hidden animate-in slide-in-from-right">
+            <div className="flex items-center justify-between p-4 border-b">
+              <span className="font-bold text-slate-900">Menu</span>
+              <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
+                <X className="w-5 h-5" />
               </Button>
             </div>
-            <div className="space-y-2">
-              {groupData?.memberQuotas.map((mq) => (
-                <div key={mq.member.id} className="text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${mq.confirmed ? "bg-green-500" : "bg-slate-300"}`} />
-                      <span className="font-medium">{mq.member.name}</span>
-                    </span>
-                    <span className="text-slate-600">€{mq.calculated.toFixed(0)}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Progress value={Math.min((mq.paid / mq.calculated) * 100, 100)} className="h-1 flex-1" />
-                    <span className="text-[10px] text-slate-400 w-8">{mq.member.quotaPercent}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="w-full mt-3 h-9 text-xs bg-green-600 hover:bg-green-700">
-                  <Plus className="w-3 h-3 mr-1" /> Versa
-                </Button>
-              </DialogTrigger>
-            </Dialog>
-          </Card>
+            <nav className="p-4 space-y-2">
+              <Link 
+                href={`/groups/${groupId}/members`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <Users className="w-5 h-5" />
+                Membri
+              </Link>
+              <Link
+                href={`/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`}
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <Receipt className="w-5 h-5" />
+                Spese Fisse
+              </Link>
+              <Link
+                href={`/groups/${groupId}/expenses/one-time?month=${currentMonth}&year=${currentYear}`}
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <ShoppingCart className="w-5 h-5" />
+                Spese Singole
+              </Link>
+              <Link 
+                href={`/groups/${groupId}/reports`} 
+                className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 text-slate-700"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <BarChart3 className="w-5 h-5" />
+                Report
+              </Link>
+            </nav>
+          </div>
+        </>
+      )}
 
-          <Card className="p-3">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-semibold text-slate-500 uppercase">Spese</h2>
-              <span className="text-[10px] text-slate-400">{groupData?.expenses.length || 0}</span>
-            </div>
-            <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-              {sortedExpenses.slice(0, 8).map((expense) => (
-                <div key={expense.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: expense.category?.color || "#6b7280" }}
-                    />
-                    <span className="truncate text-slate-700">{expense.name}</span>
-                  </div>
-                  <span className="font-medium text-slate-900">€{expense.monthlyAmount?.toFixed(0)}</span>
-                </div>
+      <main className="max-w-6xl mx-auto p-6">
+        {/* Month/Year Selector */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+          <div className="flex items-center gap-2">
+            <ChevronLeft
+              className="w-5 h-5 cursor-pointer text-slate-600 hover:text-slate-900"
+              onClick={() => {
+                if (currentMonth === 1) {
+                  handleMonthChange(12);
+                  handleYearChange(currentYear - 1);
+                } else {
+                  handleMonthChange(currentMonth - 1);
+                }
+              }}
+            />
+            <select
+              value={currentMonth}
+              onChange={(e) => handleMonthChange(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-md bg-white font-medium"
+            >
+              {[
+                "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+              ].map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
               ))}
-              {(!groupData?.expenses || groupData.expenses.length === 0) && (
-                <p className="text-xs text-slate-400 text-center py-4">Nessuna spesa</p>
-              )}
-            </div>
-          </Card>
+            </select>
+            <select
+              value={currentYear}
+              onChange={(e) => handleYearChange(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-md bg-white font-medium w-28"
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <ChevronRight
+              className="w-5 h-5 cursor-pointer text-slate-600 hover:text-slate-900"
+              onClick={() => {
+                if (currentMonth === 12) {
+                  handleMonthChange(1);
+                  handleYearChange(currentYear + 1);
+                } else {
+                  handleMonthChange(currentMonth + 1);
+                }
+              }}
+            />
+          </div>
         </div>
+
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="overview">Panoramica</TabsTrigger>
+            <TabsTrigger value="expenses">Dettaglio Spese</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-blue-100 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Totale Mensile
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">
+                    € {groupData?.totalMonthly.toFixed(2) || "0.00"}
+                  </div>
+                  <p className="text-xs text-blue-100 mt-1">da distribuire</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-green-100 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Versato
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">
+                    € {groupData?.memberQuotas.reduce((sum, m) => sum + m.paid, 0).toFixed(2) || "0.00"}
+                  </div>
+                  <p className="text-xs text-green-100 mt-1">
+                    {groupData?.memberQuotas.filter(m => m.confirmed).length || 0} confermato/i
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-amber-100 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Da Versare
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-3xl font-bold">
+                    € {((groupData?.totalMonthly ?? 0) - (groupData?.memberQuotas?.reduce((sum, m) => sum + m.paid, 0) ?? 0)).toFixed(2)}
+                  </div>
+                  <p className="text-xs text-amber-100 mt-1">rimanente</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">Quote Membri</CardTitle>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={fetchPayments}>
+                        Storico
+                      </Button>
+                      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                            <Euro className="w-4 h-4 mr-1" />
+                            Versamento
+                          </Button>
+                        </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Registra versamento</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={registerPayment} className="space-y-4 mt-4">
+                          <div className="space-y-2">
+                            <Label>Membro</Label>
+                            <select 
+                              className="w-full p-2 border rounded-md"
+                              value={selectedMemberId}
+                              onChange={(e) => setSelectedMemberId(e.target.value)}
+                              required
+                            >
+                              <option value="">Seleziona membro</option>
+                              {groupData?.memberQuotas.map((mq) => (
+                                <option key={mq.member.id} value={mq.member.id}>
+                                  {mq.member.name} (da versare: € {mq.calculated.toFixed(2)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Importo versato (€)</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={paymentAmount}
+                              onChange={(e) => setPaymentAmount(e.target.value)}
+                              required
+                            />
+                          </div>
+                          <Button type="submit" className="w-full">Registra</Button>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {groupData?.memberQuotas.map((mq) => (
+                    <div key={mq.member.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{mq.member.name}</span>
+                        <div className="text-right">
+                          <span className="text-sm font-medium">€ {mq.calculated.toFixed(2)}</span>
+                          <span className="text-xs text-slate-500 ml-2">
+                            ({mq.member.quotaPercent}%)
+                          </span>
+                        </div>
+                      </div>
+                      <Progress 
+                        value={Math.min((mq.paid / mq.calculated) * 100, 100)} 
+                        className="h-2"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Versato: € {mq.paid.toFixed(2)}</span>
+                        <Badge variant={mq.confirmed ? "default" : "secondary"} className={mq.confirmed ? "bg-green-500" : ""}>
+                          {mq.confirmed ? "Confermato" : "In attesa"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Spese per Categoria</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {categoryData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                          label={({ name, value }) => `${name}: €${value}`}
+                        >
+                          {categoryData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => `€ ${Number(value).toFixed(2)}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[300px] flex items-center justify-center text-slate-400">
+                      Nessuna spesa configurata
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="expenses">
+            <Card>
+              <CardHeader>
+                <CardTitle>Spese Ricorrenti</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {groupData?.expenses.map((expense) => (
+                    <div
+                      key={expense.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-slate-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: expense.category?.color || '#6b7280' }}
+                        />
+                        <div>
+                          <p className="font-medium">{expense.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {expense.frequencyType === 'weekly' && 'Settimanale'}
+                            {expense.frequencyType === 'monthly' && 'Mensile'}
+                            {expense.frequencyType === 'yearly' && 'Annuale'}
+                            {expense.frequencyType === 'days' && `Ogni ${expense.frequencyValue} giorni`}
+                            {expense.frequencyType === 'months' && `Ogni ${expense.frequencyValue} mesi`}
+                            {expense.category && ` • ${expense.category.name}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">€ {expense.monthlyAmount?.toFixed(2)}/mese</p>
+                        <p className="text-xs text-slate-500">€ {expense.amount} {expense.frequencyType}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {(!groupData?.expenses || groupData.expenses.length === 0) && (
+                    <div className="text-center py-8 text-slate-400">
+                      Nessuna spesa configurata
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        <ShareLinkSection
+          groupId={groupId}
+          currentToken={groupInfo?.viewToken}
+          isOwner={groupInfo?.ownerId === session?.user?.id}
+        />
       </main>
     </div>
   );
