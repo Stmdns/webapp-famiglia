@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
+import { ShareLinkSection } from "@/components/ui/share-link-section";
 
 interface MemberQuota {
   member: {
@@ -54,6 +55,7 @@ export default function GroupPage() {
   const { members, setMembers, categories, setCategories, expenses, setExpenses } = useGroupStore();
   const [loading, setLoading] = useState(true);
   const [groupData, setGroupData] = useState<GroupData | null>(null);
+  const [groupInfo, setGroupInfo] = useState<{ id: string; name: string; ownerId: string; viewToken: string | null } | null>(null);
   const [currentMonthState, setCurrentMonthState] = useState(() => {
     const monthParam = searchParams.get('month');
     return monthParam ? parseInt(monthParam, 10) : new Date().getMonth() + 1;
@@ -93,13 +95,15 @@ export default function GroupPage() {
 
   const fetchData = async () => {
     try {
-      const [membersRes, categoriesRes, expensesRes, dataRes] = await Promise.all([
+      const [groupInfoRes, membersRes, categoriesRes, expensesRes, dataRes] = await Promise.all([
+        fetch(`/api/groups/${groupId}`),
         fetch(`/api/groups/${groupId}/members`),
         fetch(`/api/groups/${groupId}/categories`),
         fetch(`/api/groups/${groupId}/expenses?month=${currentMonth}&year=${currentYear}`),
         fetch(`/api/groups/${groupId}/payments?month=${currentMonth}&year=${currentYear}`),
       ]);
 
+      if (groupInfoRes.ok) setGroupInfo(await groupInfoRes.json());
       if (membersRes.ok) setMembers(await membersRes.json());
       if (categoriesRes.ok) setCategories(await categoriesRes.json());
       if (expensesRes.ok) setExpenses(await expensesRes.json());
@@ -619,6 +623,12 @@ export default function GroupPage() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        <ShareLinkSection
+          groupId={groupId}
+          currentToken={groupInfo?.viewToken}
+          isOwner={groupInfo?.ownerId === session?.user?.id}
+        />
       </main>
     </div>
   );
