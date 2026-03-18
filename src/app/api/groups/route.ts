@@ -5,6 +5,7 @@ import { groups, groupMembers } from "@/db/schema";
 import { eq, or, and } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { authOptions } from "@/lib/auth";
+import { randomUUID } from "crypto";
 
 export async function GET() {
   try {
@@ -51,12 +52,14 @@ export async function POST(req: Request) {
     }
 
     const groupId = uuid();
+    const viewToken = randomUUID(); // Genera un token univoco per la visualizzazione
     const now = new Date();
 
     await db.insert(groups).values({
       id: groupId,
       name,
       ownerId: session.user.id,
+      viewToken, // Aggiungi il token di visualizzazione
       createdAt: now,
       updatedAt: now,
     });
